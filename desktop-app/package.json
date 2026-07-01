@@ -1,0 +1,29 @@
+{
+  "name": "desktop-app",
+  "version": "0.1.0",
+  "description": "Beam links and photos from your phone straight to your PC.",
+  "author": "Beam",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "eventsource": "^2.0.2",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "32.3.3",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.example.beam",
+    "productName": "Beam",
+    "npmRebuild": false,
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    }
+  }
+}

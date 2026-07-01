@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: share-to-pc-relay
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm run build:web
+    startCommand: npm run start:relay
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.5.0
+      - key: DB_PATH
+        value: ./data/relay.sqlite
+      - key: UPLOAD_DIR
+        value: ./data/uploads
+      - key: MAX_UPLOAD_BYTES
+        value: 15728640
+      - key: CORS_ORIGIN
+        value: ""
+      - key: INBOX_LIMIT_PER_HOUR
+        value: 5
