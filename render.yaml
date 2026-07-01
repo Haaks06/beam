@@ -4,7 +4,10 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm install && npm run build:web
+    # Render sets NODE_ENV=production during the build by default, which
+    # makes a plain "npm install" skip devDependencies (vite, needed here
+    # to build the web client) — explicitly include them for the build step.
+    buildCommand: npm install --include=dev && npm run build:web
     startCommand: npm run start:relay
     healthCheckPath: /health
     envVars:

@@ -25,8 +25,10 @@
    configures the service for you — build command, start command, health
    check, and environment variables are all already defined there.
 3. Click **Apply** / **Create**. Render will run:
-   - Build: `npm install && npm run build:web` — installs all three
-     workspaces and builds the PWA into `web-client/dist`.
+   - Build: `npm install --include=dev && npm run build:web` — installs
+     all three workspaces (including devDependencies like `vite`, which
+     Render's default `NODE_ENV=production` during builds would otherwise
+     skip) and builds the PWA into `web-client/dist`.
    - Start: `npm run start:relay` — runs `node index.js`, which already
      detects and serves `web-client/dist` if present (see the
      static-serving block in `relay-server/index.js`), so one Render
