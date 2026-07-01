@@ -15,6 +15,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
 
+// Render (and most PaaS hosts) terminate HTTPS at their edge and forward
+// plain HTTP internally, setting X-Forwarded-Proto to tell us the original
+// scheme. Without this, req.protocol always reports "http" behind such a
+// proxy, so the QR/pairing URL built from it (see routes/pair.js) would
+// point at an insecure http:// URL — which browsers block as mixed content
+// once fetched from the https:// page, surfacing as a generic network
+// error ("Load failed" in Safari) with no obvious cause.
+app.set('trust proxy', 1);
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
   cors({
