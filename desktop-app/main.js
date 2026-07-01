@@ -13,10 +13,10 @@ const RelayClient = require('./relayClient');
 const { saveLink, savePhoto, LINKS_DIR, PHOTOS_DIR } = require('./saveHandlers');
 const { createTray } = require('./tray');
 
-// TODO: once deployed (see docs/HOSTING.md), replace this fallback with the
-// real Render URL so a packaged installer works out of the box with no env
-// var required. process.env.RELAY_URL still overrides for local dev.
-const DEFAULT_RELAY_URL = process.env.RELAY_URL || 'http://localhost:3000';
+// Packaged installs default to the hosted relay so they work with zero
+// setup; process.env.RELAY_URL overrides this for local development
+// (see README.md's "Running locally" section).
+const DEFAULT_RELAY_URL = process.env.RELAY_URL || 'https://share-to-pc-relay.onrender.com';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const APP_NAME = 'Beam';
 
