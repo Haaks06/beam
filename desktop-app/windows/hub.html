@@ -12,19 +12,35 @@
       --hover: #161616;
       --success: #6bcf9a;
       --error: #e17a7a;
+      --accent: #2563eb;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       height: 100%;
       font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
+      background: transparent;
       color: var(--fg);
       font-size: 13px;
       overflow: hidden;
       user-select: none;
     }
-    body { display: flex; flex-direction: column; border: 1px solid var(--line); }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      opacity: 0;
+      transform: scale(0.97) translateY(4px);
+      animation: reveal 0.2s ease forwards;
+    }
+    @keyframes reveal {
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    /* The header is the drag handle — grab anywhere on it to move the Hub
+       wherever you want; it no longer has to stay pinned to the tray. */
     header {
       display: flex;
       align-items: center;
@@ -32,12 +48,29 @@
       padding: 12px 14px;
       border-bottom: 1px solid var(--line);
       flex-shrink: 0;
+      -webkit-app-region: drag;
+      cursor: grab;
     }
     .wordmark { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; }
     .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
-    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
-    .status.connected .dot { background: var(--success); }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.25s ease;
+    }
+    .status.connected .dot {
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(107, 207, 154, 0.6);
+      animation: pulse 2s ease-out infinite;
+    }
     .status.disconnected .dot { background: var(--error); }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(107, 207, 154, 0.5); }
+      70% { box-shadow: 0 0 0 6px rgba(107, 207, 154, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(107, 207, 154, 0); }
+    }
 
     #items {
       flex: 1;
@@ -57,6 +90,12 @@
       padding: 9px 14px;
       border-bottom: 1px solid var(--line);
       cursor: pointer;
+      transition: background 0.15s ease;
+      animation: slideIn 0.25s ease both;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to { opacity: 1; transform: translateX(0); }
     }
     .item:hover { background: var(--hover); }
     .item .kind { color: var(--muted); font-size: 10px; width: 34px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -71,6 +110,7 @@
       font-size: 11px;
       color: var(--muted);
       flex-shrink: 0;
+      transition: color 0.15s ease;
     }
     .item.copied .action { color: var(--success); }
 
@@ -89,9 +129,11 @@
       cursor: pointer;
       font-family: inherit;
       border-right: 1px solid var(--line);
+      transition: color 0.15s ease, background 0.15s ease;
     }
     footer button:last-child { border-right: none; }
     footer button:hover { color: var(--fg); background: var(--hover); }
+    footer button:active { color: var(--accent); }
   </style>
 </head>
 <body>

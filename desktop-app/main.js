@@ -28,6 +28,25 @@ let hubWindow;
 let relayClient;
 let status = 'starting';
 let recentItems = [];
+// Remembers where the Hub was last dragged to (in-session only), so
+// reopening it doesn't snap back to the tray-anchored default every time.
+let lastHubBounds = null;
+
+// Ramps window opacity 0→1 so popups arrive as a soft fade instead of an
+// abrupt pop-in. Windows must be created with show:false and opacity:0,
+// then this called from their 'ready-to-show' handler.
+function fadeIn(win, durationMs = 160) {
+  const steps = 8;
+  const stepMs = durationMs / steps;
+  let i = 0;
+  win.show();
+  const timer = setInterval(() => {
+    i += 1;
+    if (!win || win.isDestroyed()) return clearInterval(timer);
+    win.setOpacity(Math.min(1, i / steps));
+    if (i >= steps) clearInterval(timer);
+  }, stepMs);
+}
 
 function setStatus(next) {
   status = next;
@@ -72,7 +91,14 @@ app.whenReady().then(async () => {
   // anything sent while you were still on the pairing screen (the most
   // likely moment to test it) sat undelivered until you closed the window.
   startRelayClient();
-  if (needsPairing) {
+  // Deliberately independent of `needsPairing`: that flag is about whether
+  // the relay token is still valid, not about whether this install has ever
+  // shown the welcome/intro screen. Without this, upgrading the app on a
+  // machine that already paired successfully (the common case — anyone
+  // testing an update) would never see the welcome window at all, since
+  // ensureOwnDevice() finds the still-valid token from the previous version
+  // and reports needsPairing: false.
+  if (!store.load().hasSeenWelcome) {
     showWelcomeWindow();
   }
 
@@ -200,6 +226,13 @@ function showWelcomeWindow() {
     // pairing content below it, without scrolling.
     height: 760,
     resizable: false,
+    show: false,
+    opacity: 0,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: true,
+    roundedCorners: true,
     title: `Welcome to ${APP_NAME}`,
     webPreferences: {
       contextIsolation: true,
@@ -214,8 +247,10 @@ function showWelcomeWindow() {
   welcomeWindow.loadFile(path.join(__dirname, 'windows', 'welcome.html'), {
     query: { relayUrl: config.relayUrl, token: config.token, firstRun: '1' },
   });
+  welcomeWindow.once('ready-to-show', () => fadeIn(welcomeWindow));
   welcomeWindow.on('closed', () => {
     welcomeWindow = null;
+    store.update({ hasSeenWelcome: true });
     notify(`${APP_NAME} is running`, 'Left-click the tray icon anytime to see recent items, pair another device, or quit.');
   });
 }
@@ -249,6 +284,13 @@ async function showPairingWindow() {
     width: 340,
     height: 420,
     resizable: false,
+    show: false,
+    opacity: 0,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: true,
+    roundedCorners: true,
     title: `Pair a device — ${APP_NAME}`,
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
@@ -256,6 +298,7 @@ async function showPairingWindow() {
   pairingWindow.loadFile(path.join(__dirname, 'windows', 'pairing.html'), {
     query: { relayUrl: config.relayUrl, token: config.token },
   });
+  pairingWindow.once('ready-to-show', () => fadeIn(pairingWindow));
   pairingWindow.on('closed', () => {
     pairingWindow = null;
   });
@@ -270,11 +313,18 @@ function toggleHubWindow() {
     return;
   }
 
-  const trayBounds = tray.getBounds();
   const width = 340;
   const height = 420;
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
-  const y = Math.round(trayBounds.y - height);
+  let x, y;
+  if (lastHubBounds) {
+    // Reopen wherever the user last dragged it to, rather than snapping
+    // back to the tray every time — the whole point of making it movable.
+    ({ x, y } = lastHubBounds);
+  } else {
+    const trayBounds = tray.getBounds();
+    x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
+    y = Math.round(trayBounds.y - height);
+  }
 
   hubWindow = new BrowserWindow({
     width,
@@ -284,6 +334,10 @@ function toggleHubWindow() {
     frame: false,
     resizable: false,
     show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: true,
+    roundedCorners: true,
     skipTaskbar: true,
     alwaysOnTop: true,
     webPreferences: {
@@ -293,10 +347,17 @@ function toggleHubWindow() {
     },
   });
   hubWindow.loadFile(path.join(__dirname, 'windows', 'hub.html'));
+  // Unlike welcome/pairing (which fade the whole window in via fadeIn(), so
+  // the video/QR aren't just abruptly present), the Hub's premium entrance
+  // is a CSS transform+opacity animation on its own body — cheaper, and
+  // avoids stacking two competing opacity ramps on the same surface.
   hubWindow.once('ready-to-show', () => hubWindow.show());
   hubWindow.on('blur', () => hubWindow?.close());
   hubWindow.on('closed', () => {
     hubWindow = null;
+  });
+  hubWindow.on('moved', () => {
+    if (hubWindow && !hubWindow.isDestroyed()) lastHubBounds = hubWindow.getBounds();
   });
 }
 

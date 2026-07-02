@@ -30,6 +30,7 @@ async function init() {
     throw new Error(data.error === 'invalid token' ? `${data.error} — try quitting and reopening the app` : data.error || `relay returned ${res.status}`);
   }
   qrImg.src = data.qrDataUrl;
+  qrImg.onload = () => qrImg.classList.add('loaded');
   codeEl.textContent = data.pairingCode;
   setStatus('Waiting for a device to scan or enter this code…');
   poll(data.pairingCode);

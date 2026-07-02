@@ -11,21 +11,55 @@
       --line: #232323;
       --success: #6bcf9a;
       --error: #e17a7a;
+      --accent: #2563eb;
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
+      height: 100%;
+      -webkit-app-region: drag;
+    }
+    body {
+      position: relative;
       font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
       background: var(--bg);
       color: var(--fg);
       display: flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
     }
+    .close-btn {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
     main {
       width: 300px;
       text-align: center;
+      opacity: 0;
+      transform: translateY(6px);
+      animation: reveal 0.4s ease 0.1s forwards;
+    }
+    @keyframes reveal {
+      to { opacity: 1; transform: translateY(0); }
     }
     h1 {
       margin: 0 0 4px;
@@ -42,7 +76,11 @@
       background: #fff;
       display: block;
       margin: 0 auto;
+      border-radius: 10px;
+      opacity: 0;
+      transition: opacity 0.35s ease;
     }
+    img.qr.loaded { opacity: 1; }
     .code {
       font-family: ui-monospace, "SF Mono", Consolas, monospace;
       font-size: 26px;
@@ -50,18 +88,21 @@
       font-weight: 500;
       margin: 20px 0 0;
       padding-left: 0.3em; /* visually re-center after letter-spacing */
+      color: var(--accent);
     }
     hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
     .status {
       min-height: 18px;
       font-size: 12px;
       color: var(--muted);
+      transition: color 0.2s ease;
     }
     .status.success { color: var(--success); }
     .status.error { color: var(--error); }
   </style>
 </head>
 <body>
+  <button class="close-btn" onclick="window.close()" title="Close">&times;</button>
   <main>
     <h1>Pair a device</h1>
     <p class="subtitle">Scan with your phone, or enter the code manually</p>

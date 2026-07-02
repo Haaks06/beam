@@ -11,18 +11,47 @@
       --line: #232323;
       --success: #6bcf9a;
       --error: #e17a7a;
+      --accent: #2563eb;
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
+      height: 100%;
+      -webkit-app-region: drag;
+    }
+    body {
+      position: relative;
       font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
       background: var(--bg);
       color: var(--fg);
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
     }
+    .close-btn {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease, color 0.15s ease;
+      z-index: 2;
+    }
+    .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
     video.intro {
       width: 100%;
       max-height: 260px;
@@ -30,7 +59,17 @@
       display: block;
       background: #000;
     }
-    main { width: 300px; text-align: center; padding: 20px 0; }
+    main {
+      width: 300px;
+      text-align: center;
+      padding: 20px 0;
+      opacity: 0;
+      transform: translateY(6px);
+      animation: reveal 0.45s ease 0.15s forwards;
+    }
+    @keyframes reveal {
+      to { opacity: 1; transform: translateY(0); }
+    }
     .wordmark {
       font-size: 15px;
       font-weight: 700;
@@ -49,7 +88,11 @@
       background: #fff;
       display: block;
       margin: 0 auto;
+      border-radius: 10px;
+      opacity: 0;
+      transition: opacity 0.35s ease;
     }
+    img.qr.loaded { opacity: 1; }
     .code {
       font-family: ui-monospace, "SF Mono", Consolas, monospace;
       font-size: 24px;
@@ -57,6 +100,7 @@
       font-weight: 500;
       margin: 18px 0 0;
       padding-left: 0.3em;
+      color: var(--accent);
     }
     hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
     .status {
@@ -64,12 +108,14 @@
       font-size: 12px;
       color: var(--muted);
       line-height: 1.5;
+      transition: color 0.2s ease;
     }
     .status.success { color: var(--success); }
     .status.error { color: var(--error); }
   </style>
 </head>
 <body>
+  <button class="close-btn" onclick="window.close()" title="Close">&times;</button>
   <video class="intro" src="../assets/intro.mp4" autoplay muted playsinline></video>
   <main>
     <div class="wordmark">Beam</div>
