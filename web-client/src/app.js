@@ -37,6 +37,8 @@ function loadConfig() {
 
 const statusEl = document.getElementById('status');
 const pairedBanner = document.getElementById('paired-banner');
+const pairSection = document.getElementById('pair-section');
+const repairLink = document.getElementById('repair-link');
 const relayUrlInput = document.getElementById('relay-url');
 const pairingCodeInput = document.getElementById('pairing-code');
 
@@ -46,11 +48,22 @@ function setStatus(message, variant) {
   if (variant) statusEl.classList.add(variant);
 }
 
+// Once paired, the pairing form has done its job — sweep it away so the
+// page is just "send a link or photo," not a form you have to look past.
 function refreshPairedState() {
   const { relayUrl, token } = loadConfig();
-  pairedBanner.style.display = token ? 'block' : 'none';
+  const paired = Boolean(token);
+  pairedBanner.style.display = paired ? 'block' : 'none';
+  pairSection.classList.toggle('collapsed', paired);
+  repairLink.style.display = paired ? 'block' : 'none';
   if (relayUrl) relayUrlInput.value = relayUrl;
 }
+
+repairLink.addEventListener('click', () => {
+  pairSection.classList.remove('collapsed');
+  pairedBanner.style.display = 'none';
+  repairLink.style.display = 'none';
+});
 
 // Scanning the desktop app's pairing QR opens this page with ?relay=&code=
 // attached, so prefill the form instead of making the user type the code.

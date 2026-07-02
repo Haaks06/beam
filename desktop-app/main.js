@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, Notification } = require('electron');
+const { app, BrowserWindow, Notification, clipboard, ipcMain, shell } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData')
 // (store.js and saveHandlers.js both compute paths at module-load time) —
@@ -19,33 +19,41 @@ const { createTray } = require('./tray');
 const DEFAULT_RELAY_URL = process.env.RELAY_URL || 'https://share-to-pc-relay.onrender.com';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const APP_NAME = 'Beam';
+const MAX_RECENT_ITEMS = 20;
 
 let tray;
-let rebuildMenu;
 let pairingWindow;
 let welcomeWindow;
+let hubWindow;
 let relayClient;
 let status = 'starting';
+let recentItems = [];
+
+function setStatus(next) {
+  status = next;
+  hubWindow?.webContents.send('status-updated', status);
+}
 
 app.whenReady().then(async () => {
   // Menu-bar-only app: subscribing (even with a no-op) stops Electron's
   // default behavior of quitting once every window closes on Windows/Linux.
   app.on('window-all-closed', () => {});
 
-  const setStatus = (next) => {
-    status = next;
-    rebuildMenu?.(LINKS_DIR, PHOTOS_DIR);
-  };
+  // Keeps Beam "always on" — relaunches with Windows so it doesn't need to
+  // be manually started each session. Skipped in dev (electron .) since
+  // that would register the electron.exe shell itself as a login item.
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+  }
 
   const trayHandle = createTray({
     iconPath: ICON_PATH,
-    onShowPairing: () => showPairingWindow(),
-    getStatus: () => status,
+    onLeftClick: () => toggleHubWindow(),
     onQuit: () => app.quit(),
   });
   tray = trayHandle.tray;
-  rebuildMenu = trayHandle.rebuildMenu;
-  rebuildMenu(LINKS_DIR, PHOTOS_DIR);
+
+  registerIpcHandlers();
 
   let needsPairing;
   try {
@@ -60,9 +68,9 @@ app.whenReady().then(async () => {
   }
 
   if (needsPairing) {
-    showWelcomeWindow(() => startRelayClient(setStatus));
+    showWelcomeWindow(() => startRelayClient());
   } else {
-    startRelayClient(setStatus);
+    startRelayClient();
   }
 });
 
@@ -114,7 +122,7 @@ async function ensureOwnDevice() {
   return true;
 }
 
-function startRelayClient(setStatus) {
+function startRelayClient() {
   const config = store.load();
   relayClient = new RelayClient({
     relayUrl: config.relayUrl,
@@ -125,14 +133,26 @@ function startRelayClient(setStatus) {
   relayClient.start();
 }
 
+function pushRecentItem(entry) {
+  recentItems.unshift(entry);
+  recentItems = recentItems.slice(0, MAX_RECENT_ITEMS);
+  hubWindow?.webContents.send('items-updated', recentItems);
+}
+
 async function handleItem(item, config) {
   try {
     if (item.type === 'link') {
       saveLink(item);
-      notify('Link received', item.content);
+      // The whole point of "beaming" a link over is to use it right away —
+      // copy it straight to the clipboard so it's a paste away, no need to
+      // dig through a notification or a file.
+      clipboard.writeText(item.content);
+      notify('Link copied to clipboard', item.content);
+      pushRecentItem({ id: item.id, type: 'link', content: item.content, createdAt: item.createdAt });
     } else if (item.type === 'photo') {
       const savedPath = await savePhoto(item, config.relayUrl, config.token);
       notify('Photo received', savedPath);
+      pushRecentItem({ id: item.id, type: 'photo', filePath: savedPath, fileName: path.basename(savedPath), createdAt: item.createdAt });
     }
   } catch (err) {
     console.error('failed to handle item', err);
@@ -157,7 +177,7 @@ function showWelcomeWindow(onClosed) {
   });
   welcomeWindow.on('closed', () => {
     welcomeWindow = null;
-    notify(`${APP_NAME} is running`, 'Right-click the tray icon anytime to pair another device or open your folders.');
+    notify(`${APP_NAME} is running`, 'Left-click the tray icon anytime to see recent items, pair another device, or quit.');
     onClosed?.();
   });
 }
@@ -192,4 +212,56 @@ function showPairingWindow() {
   pairingWindow.on('closed', () => {
     pairingWindow = null;
   });
+}
+
+// A small popup panel anchored near the tray icon (like Slack/Dropbox),
+// rather than a regular window — shows recent items and quick actions,
+// consolidating what used to be separate right-click menu entries.
+function toggleHubWindow() {
+  if (hubWindow) {
+    hubWindow.close();
+    return;
+  }
+
+  const trayBounds = tray.getBounds();
+  const width = 340;
+  const height = 420;
+  const x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
+  const y = Math.round(trayBounds.y - height);
+
+  hubWindow = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    resizable: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'windows', 'hub-preload.js'),
+    },
+  });
+  hubWindow.loadFile(path.join(__dirname, 'windows', 'hub.html'));
+  hubWindow.once('ready-to-show', () => hubWindow.show());
+  hubWindow.on('blur', () => hubWindow?.close());
+  hubWindow.on('closed', () => {
+    hubWindow = null;
+  });
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('hub:get-items', () => recentItems);
+  ipcMain.handle('hub:get-status', () => status);
+  ipcMain.handle('hub:copy', (event, text) => clipboard.writeText(text));
+  ipcMain.handle('hub:open-folder', (event, which) => shell.openPath(which === 'photos' ? PHOTOS_DIR : LINKS_DIR));
+  ipcMain.handle('hub:open-photo', (event, filePath) => shell.openPath(filePath));
+  ipcMain.handle('hub:pair', () => {
+    hubWindow?.close();
+    showPairingWindow();
+  });
+  ipcMain.handle('hub:quit', () => app.quit());
 }

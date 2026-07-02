@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Beam</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --fg: #e8e8e8;
+      --muted: #6b6b6b;
+      --line: #202020;
+      --hover: #161616;
+      --success: #6bcf9a;
+      --error: #e17a7a;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 13px;
+      overflow: hidden;
+      user-select: none;
+    }
+    body { display: flex; flex-direction: column; border: 1px solid var(--line); }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .wordmark { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; }
+    .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .status.connected .dot { background: var(--success); }
+    .status.disconnected .dot { background: var(--error); }
+
+    #items {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 60px;
+    }
+    .empty {
+      padding: 28px 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+    }
+    .item:hover { background: var(--hover); }
+    .item .kind { color: var(--muted); font-size: 10px; width: 34px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .item .content {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    .item .action {
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .item.copied .action { color: var(--success); }
+
+    footer {
+      display: flex;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    footer button {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 10px 4px;
+      cursor: pointer;
+      font-family: inherit;
+      border-right: 1px solid var(--line);
+    }
+    footer button:last-child { border-right: none; }
+    footer button:hover { color: var(--fg); background: var(--hover); }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="wordmark">Beam</span>
+    <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
+  </header>
+  <div id="items">
+    <div class="empty">Nothing shared yet</div>
+  </div>
+  <footer>
+    <button id="pair-btn">Pair device</button>
+    <button id="photos-btn">Photos</button>
+    <button id="links-btn">Links</button>
+    <button id="quit-btn">Quit</button>
+  </footer>
+  <script src="hub.js"></script>
+</body>
+</html>

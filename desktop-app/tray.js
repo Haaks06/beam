@@ -1,25 +1,23 @@
-const path = require('node:path');
-const { Tray, Menu, shell, nativeImage } = require('electron');
+const { Tray, Menu, nativeImage } = require('electron');
 
-function createTray({ iconPath, onShowPairing, getStatus, onQuit }) {
+// Left-click opens the Hub popup (recent items, pairing, folders, quit —
+// see main.js's toggleHubWindow); right-click keeps a minimal native menu
+// as a fallback since not everyone expects a left-click app on Windows.
+function createTray({ iconPath, onLeftClick, onQuit }) {
   const image = nativeImage.createFromPath(iconPath);
   const tray = new Tray(image.isEmpty() ? image : image.resize({ width: 16, height: 16 }));
   tray.setToolTip('Beam');
 
-  const rebuildMenu = (linksDir, photosDir) => {
-    const menu = Menu.buildFromTemplate([
-      { label: `Status: ${getStatus()}`, enabled: false },
-      { type: 'separator' },
-      { label: 'Show pairing QR (add a device)', click: onShowPairing },
-      { label: 'Open photos folder', click: () => shell.openPath(photosDir) },
-      { label: 'Open links folder', click: () => shell.openPath(linksDir) },
-      { type: 'separator' },
-      { label: 'Quit', click: onQuit },
-    ]);
-    tray.setContextMenu(menu);
-  };
+  tray.on('click', onLeftClick);
 
-  return { tray, rebuildMenu };
+  const menu = Menu.buildFromTemplate([
+    { label: 'Open Beam', click: onLeftClick },
+    { type: 'separator' },
+    { label: 'Quit', click: onQuit },
+  ]);
+  tray.setContextMenu(menu);
+
+  return { tray };
 }
 
 module.exports = { createTray };

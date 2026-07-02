@@ -5,14 +5,12 @@
   <title>Pair a device — Beam</title>
   <style>
     :root {
-      --bg: #0f1115;
-      --card: #191c22;
-      --fg: #f2f3f5;
-      --muted: #9aa1ac;
-      --accent: #2563eb;
-      --success: #34d399;
-      --error: #f87171;
-      --radius: 14px;
+      --bg: #0a0a0a;
+      --fg: #e8e8e8;
+      --muted: #6b6b6b;
+      --line: #232323;
+      --success: #6bcf9a;
+      --error: #e17a7a;
     }
     * { box-sizing: border-box; }
     body {
@@ -25,36 +23,38 @@
       justify-content: center;
       min-height: 100vh;
     }
-    .card {
-      width: 320px;
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 28px 24px;
+    main {
+      width: 300px;
       text-align: center;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
     }
-    h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
-    .subtitle { margin: 0 0 20px; font-size: 13px; color: var(--muted); }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    p.subtitle { margin: 0 0 24px; font-size: 13px; color: var(--muted); }
     img.qr {
-      width: 240px;
-      height: 240px;
-      border-radius: 10px;
+      width: 200px;
+      height: 200px;
       background: #fff;
-      padding: 10px;
       display: block;
       margin: 0 auto;
     }
     .code {
-      font-size: 30px;
-      letter-spacing: 6px;
-      font-weight: 700;
-      margin: 16px 0 6px;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 26px;
+      letter-spacing: 0.3em;
+      font-weight: 500;
+      margin: 20px 0 0;
+      padding-left: 0.3em; /* visually re-center after letter-spacing */
     }
-    .hint { font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+    hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
     .status {
-      margin-top: 16px;
-      min-height: 20px;
-      font-size: 13px;
+      min-height: 18px;
+      font-size: 12px;
       color: var(--muted);
     }
     .status.success { color: var(--success); }
@@ -62,14 +62,14 @@
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>Scan to add a device</h2>
-    <p class="subtitle">Point your phone's camera at this code</p>
+  <main>
+    <h1>Pair a device</h1>
+    <p class="subtitle">Scan with your phone, or enter the code manually</p>
     <img class="qr" id="qr" src="" alt="QR code" />
     <div class="code" id="code">------</div>
-    <p class="hint">Or open the Beam web app and enter this code by hand.</p>
+    <hr />
     <div class="status" id="status">Generating code…</div>
-  </div>
+  </main>
   <script src="pairing.js"></script>
 </body>
 </html>
