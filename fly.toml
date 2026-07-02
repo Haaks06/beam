@@ -1,0 +1,38 @@
+# App name is assigned when the app is created via `fly launch`/`fly apps
+# create` (must be globally unique on Fly.io) — update this to match once
+# created, per docs/HOSTING.md.
+app = "beam-relay"
+primary_region = "iad"
+
+[build]
+
+[env]
+  DB_PATH = "/data/relay.sqlite"
+  UPLOAD_DIR = "/data/uploads"
+  MAX_UPLOAD_BYTES = "15728640"
+  CORS_ORIGIN = ""
+  INBOX_LIMIT_PER_HOUR = "5"
+
+[[mounts]]
+  source = "beam_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # The whole point of moving off Render's free tier: never scale to zero,
+  # so pairings survive idle periods instead of being wiped on every
+  # sleep/wake cycle.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  path = "/health"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
