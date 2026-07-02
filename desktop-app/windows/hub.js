@@ -96,3 +96,51 @@ window.beam.onStatusUpdated(renderStatus);
 window.beam.getItems().then(renderItems);
 window.beam.getStatus().then(renderStatus);
 window.beam.getPendingCount().then(renderPendingCount);
+
+// --- Profile: avatar button in the header opens a slide-out panel with
+// who you're signed in as. This is the only place in the desktop app
+// that shows identity once the welcome window closes. ---
+
+const profileBtn = document.getElementById('profile-btn');
+const profilePanel = document.getElementById('profile-panel');
+const profileBackdrop = document.getElementById('profile-backdrop');
+const profileCloseBtn = document.getElementById('profile-close-btn');
+const profileAvatar = document.getElementById('profile-avatar');
+const profileName = document.getElementById('profile-name');
+const profileKind = document.getElementById('profile-kind');
+const profileBody = document.getElementById('profile-body');
+const profileLogoutBtn = document.getElementById('profile-logout-btn');
+
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[1][0];
+}
+
+function renderIdentity(identity) {
+  const label = identity.isAccount && identity.displayName ? identity.displayName : 'This device';
+  const badge = initials(label);
+  profileBtn.textContent = badge;
+  profileAvatar.textContent = badge;
+  profileName.textContent = label;
+  profileKind.textContent = identity.isAccount ? 'Account' : 'Anonymous device — not backed by an account';
+  profileBody.textContent = identity.isAccount
+    ? 'Files sent to "My devices" go to every device signed into this account. Manage your device list from the web panel.'
+    : 'This device isn’t signed into an account, so it can only be reached by pairing a code directly. Sign in from the web panel to link it to an account.';
+}
+
+function openProfilePanel() {
+  profilePanel.classList.add('open');
+  profileBackdrop.classList.add('open');
+}
+function closeProfilePanel() {
+  profilePanel.classList.remove('open');
+  profileBackdrop.classList.remove('open');
+}
+
+profileBtn.addEventListener('click', openProfilePanel);
+profileCloseBtn.addEventListener('click', closeProfilePanel);
+profileBackdrop.addEventListener('click', closeProfilePanel);
+profileLogoutBtn.addEventListener('click', () => window.beam.logout());
+
+window.beam.getIdentity().then(renderIdentity);

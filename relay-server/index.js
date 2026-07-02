@@ -40,10 +40,13 @@ app.use(express.json());
 // POST /inbox is the unauthenticated front door now that /pair/init
 // requires a token (see routes/pair.js) — legitimate use is "once per new
 // person setting up the app," so a stricter, hourly cap keeps mass
-// inbox-creation abuse expensive without blocking normal setup.
+// inbox-creation abuse expensive without blocking normal setup. 5/hour
+// proved too tight in practice: retrying "Start Beaming" a few times, or
+// a household/office behind one shared IP, burns through it and looks
+// like the app is silently broken.
 const inboxLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 5,
+  limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 30,
 });
 app.use('/inbox', inboxLimiter, inboxRoutes);
 

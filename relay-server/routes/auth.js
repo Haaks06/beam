@@ -39,10 +39,11 @@ function normalizeUsername(raw) {
 }
 
 // Mirrors POST /inbox's abuse concern (mass account creation), just also
-// gated on a real credential now.
+// gated on a real credential now. Same reasoning as /inbox for the 30
+// default — 5 was too easy to exhaust via normal retries/shared IPs.
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: Number(process.env.SIGNUP_LIMIT_PER_HOUR) || 5,
+  limit: Number(process.env.SIGNUP_LIMIT_PER_HOUR) || 30,
 });
 // Deliberately looser than admin's 5/15min — this is multi-tenant, and
 // shared-IP/NAT households hitting it during normal use is a real,

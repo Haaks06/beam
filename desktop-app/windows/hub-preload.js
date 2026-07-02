@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('beam', {
   quit: () => ipcRenderer.invoke('hub:quit'),
   getPendingCount: () => ipcRenderer.invoke('hub:get-pending-count'),
   openWebPanel: () => ipcRenderer.invoke('hub:open-web-panel'),
+  getIdentity: () => ipcRenderer.invoke('hub:get-identity'),
+  logout: () => ipcRenderer.invoke('hub:logout'),
   onItemsUpdated: (cb) => ipcRenderer.on('items-updated', (_event, items) => cb(items)),
   onStatusUpdated: (cb) => ipcRenderer.on('status-updated', (_event, status) => cb(status)),
 });

@@ -404,6 +404,37 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('hub:quit', () => app.quit());
 
+  // The Hub previously showed no identity at all once the welcome window
+  // closed — you could be signed into an account and never see your own
+  // name anywhere in the app. Falls back to the generic device label for
+  // anonymous (non-account) setups, where there's no display name to show.
+  ipcMain.handle('hub:get-identity', async () => {
+    const config = store.load();
+    if (!config.token) return { isAccount: false, displayName: null, relayUrl: config.relayUrl || DEFAULT_RELAY_URL };
+    try {
+      const res = await fetch(`${config.relayUrl}/auth/me`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+      });
+      if (!res.ok) return { isAccount: false, displayName: null, relayUrl: config.relayUrl };
+      const data = await res.json();
+      return { isAccount: !!data.isAccount, displayName: data.displayName || null, relayUrl: config.relayUrl };
+    } catch {
+      return { isAccount: false, displayName: null, relayUrl: config.relayUrl };
+    }
+  });
+
+  // Client-side only, same as the web client: forgets the local token and
+  // reopens the welcome window to sign in again, but doesn't revoke the
+  // device server-side (there's no server-side "log out," only "revoke,"
+  // which is a separate, more destructive action reserved for the device
+  // list — see docs/THREAT_MODEL.md).
+  ipcMain.handle('hub:logout', () => {
+    relayClient?.stop();
+    store.update({ token: '', lastSeenId: 0 });
+    hubWindow?.close();
+    showWelcomeWindow();
+  });
+
   // Not building a full friend-management UI in Electron for v1 — the web
   // client already has one. This just needs to count how many pending
   // requests are waiting so the Hub can show a badge prompting you to go

@@ -72,6 +72,126 @@
       vertical-align: middle;
     }
 
+    /* Profile avatar: a circular initial-badge in the header that opens
+       the slide-out identity panel. It's the only place in the whole
+       desktop app that shows who you're signed in as once the welcome
+       window closes, so it needs to be visible at a glance, not tucked
+       into a menu. */
+    #profile-btn {
+      -webkit-app-region: no-drag;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: var(--beam-gradient);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font-body);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin-right: 8px;
+      flex-shrink: 0;
+      transition: transform 0.15s ease;
+    }
+    #profile-btn:hover { transform: scale(1.08); }
+    #profile-btn:active { transform: scale(0.96); }
+
+    #profile-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 2;
+    }
+    #profile-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    #profile-panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 250px;
+      background: var(--bg);
+      border-left: 1px solid var(--line);
+      box-shadow: -18px 0 40px rgba(0, 0, 0, 0.4);
+      transform: translateX(100%);
+      transition: transform 0.22s var(--ease-out-expo);
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+    }
+    #profile-panel.open { transform: translateX(0); }
+    #profile-panel .profile-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    #profile-panel .profile-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--beam-gradient);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    #profile-panel .profile-name {
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #profile-panel .profile-kind {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    #profile-panel .profile-body {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    #profile-close-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      margin-left: auto;
+      padding: 4px;
+      flex-shrink: 0;
+    }
+    #profile-close-btn:hover { color: var(--fg); }
+    #profile-logout-btn {
+      -webkit-app-region: no-drag;
+      margin: 0 14px 14px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: none;
+      color: var(--fg);
+      font-size: 12px;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    #profile-logout-btn:hover { background: var(--surface-hover); border-color: var(--muted); }
+
     #items {
       position: relative;
       z-index: 1;
@@ -144,11 +264,27 @@
 </head>
 <body>
   <header>
+    <button id="profile-btn" title="Your account"></button>
     <span class="wordmark"><img src="../assets/icon-48.png" alt="" width="18" height="18" />Beam<span id="pending-badge" class="pending-badge"></span></span>
     <span class="signal" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
   </header>
   <div id="items">
     <div class="empty">Nothing beamed yet</div>
+  </div>
+  <div id="profile-backdrop"></div>
+  <div id="profile-panel">
+    <div class="profile-header">
+      <span class="profile-avatar" id="profile-avatar"></span>
+      <span>
+        <div class="profile-name" id="profile-name">—</div>
+        <div class="profile-kind" id="profile-kind"></div>
+      </span>
+      <button id="profile-close-btn" title="Close">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    <div class="profile-body" id="profile-body"></div>
+    <button id="profile-logout-btn">Log out</button>
   </div>
   <footer>
     <button id="pair-btn" title="Add another of your own devices">
