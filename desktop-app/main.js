@@ -196,10 +196,19 @@ function showWelcomeWindow() {
   const config = store.load();
   welcomeWindow = new BrowserWindow({
     width: 380,
-    height: 520,
+    // Tall enough for the intro video (up to 260px) plus the existing
+    // pairing content below it, without scrolling.
+    height: 760,
     resizable: false,
     title: `Welcome to ${APP_NAME}`,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      // Electron already defaults to this, but pin it explicitly — a muted
+      // autoplay video that silently fails to start would be a bad first
+      // impression and hard to notice was even wrong.
+      autoplayPolicy: 'no-user-gesture-required',
+    },
   });
   welcomeWindow.setMenuBarVisibility(false);
   welcomeWindow.loadFile(path.join(__dirname, 'windows', 'welcome.html'), {
