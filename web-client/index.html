@@ -39,6 +39,7 @@
     <div id="receive-section" style="display:none">
       <div class="divider">Connect to the sending device</div>
       <p class="hint-text">Scan the QR code shown there, or type its code below.</p>
+      <button type="button" id="scan-qr-btn" class="primary">📷 Scan QR with camera</button>
       <label>Pairing code<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
       <button id="pair-btn" class="primary">Connect</button>
       <button type="button" id="receive-back-btn" class="link">← Back</button>
@@ -46,6 +47,17 @@
       <div id="advanced-section" style="display:none">
         <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
       </div>
+    </div>
+
+    <div id="scan-section" style="display:none">
+      <p class="section-title">Point your camera at the QR code</p>
+      <div class="scan-frame" id="scan-frame">
+        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+        <span class="scanline"></span>
+        <video id="scan-video" autoplay playsinline muted></video>
+      </div>
+      <p class="waiting-text" id="scan-status">Requesting camera access…</p>
+      <button type="button" id="scan-cancel-btn" class="link">Cancel</button>
     </div>
   </section>
 

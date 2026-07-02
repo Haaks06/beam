@@ -1,4 +1,5 @@
 import './styles.css';
+import jsQR from 'jsqr';
 
 const DB_NAME = 'share-to-pc';
 const STORE_NAME = 'config';
@@ -57,6 +58,26 @@ function deviceLabel() {
   if (/Windows/.test(ua)) return 'Windows PC';
   if (/Mac/.test(ua)) return 'Mac';
   return ua.slice(0, 40);
+}
+
+function truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+// Not every non-2xx response is guaranteed to be JSON — a rate limit, a
+// proxy-level 502/504 HTML page, or a timeout can all return plain text or
+// HTML instead. Blindly calling res.json() on those throws its own opaque
+// parse error ("Unexpected token 'T' ... is not valid JSON") that then
+// replaces the actually-useful message. This always resolves to *something*
+// readable instead.
+async function parseErrorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch {
+    if (res.status === 429) return 'Too many requests — wait a moment and try again.';
+    return fallback;
+  }
 }
 
 const statusEl = document.getElementById('status');
@@ -134,6 +155,7 @@ function enterStartState() {
   disconnectReceivedFeed();
   clearInterval(invitePollTimer);
   clearInterval(countdownTimer);
+  stopQrScan();
   if (connPill) connPill.style.display = 'none';
   intentGrid.style.display = 'flex';
   receiveSection.style.display = 'none';
@@ -185,7 +207,7 @@ async function enterInviteState() {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
+    if (!res.ok) throw new Error(await parseErrorMessage(res, 'failed to create invite'));
     const data = await res.json();
     inviteCodeEl.textContent = data.pairingCode;
     inviteQrEl.classList.remove('loaded');
@@ -248,7 +270,7 @@ intentSendBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label: deviceLabel() }),
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'failed to start');
+    if (!res.ok) throw new Error(await parseErrorMessage(res, 'failed to start'));
     const { token } = await res.json();
     await saveConfig({ relayUrl, token, expiresAt: null });
     setStatus('', null);
@@ -289,10 +311,103 @@ async function claimPairingCode(relayUrl, pairingCode) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pairingCode, label: deviceLabel() }),
   });
-  if (!res.ok) throw new Error((await res.json()).error || 'pairing failed');
+  if (!res.ok) throw new Error(await parseErrorMessage(res, 'pairing failed'));
   const { token, expiresAt } = await res.json();
   await saveConfig({ relayUrl, token, expiresAt });
   enterActiveState();
+}
+
+// --- In-browser QR scanning: previously the only way to "scan" was to
+// leave the site and use the OS camera app, which doesn't exist on every
+// device (a PC's webcam has no such affordance) and adds a context switch
+// on ones that do. This decodes the camera feed directly on the page. ---
+
+const scanQrBtn = document.getElementById('scan-qr-btn');
+const scanSection = document.getElementById('scan-section');
+const scanVideo = document.getElementById('scan-video');
+const scanStatus = document.getElementById('scan-status');
+const scanCancelBtn = document.getElementById('scan-cancel-btn');
+const scanCanvas = document.createElement('canvas');
+const scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
+
+let scanStream = null;
+let scanRafId = null;
+
+const canScanQr = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+if (!canScanQr && scanQrBtn) scanQrBtn.style.display = 'none';
+
+function stopQrScan() {
+  if (scanRafId) cancelAnimationFrame(scanRafId);
+  scanRafId = null;
+  if (scanStream) {
+    for (const track of scanStream.getTracks()) track.stop();
+    scanStream = null;
+  }
+  scanSection.style.display = 'none';
+}
+
+function scanVideoFrame() {
+  if (scanVideo.readyState === scanVideo.HAVE_ENOUGH_DATA) {
+    scanCanvas.width = scanVideo.videoWidth;
+    scanCanvas.height = scanVideo.videoHeight;
+    scanCtx.drawImage(scanVideo, 0, 0, scanCanvas.width, scanCanvas.height);
+    const imageData = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+    const decoded = jsQR(imageData.data, imageData.width, imageData.height);
+    if (decoded) {
+      handleScannedQr(decoded.data);
+      return;
+    }
+  }
+  scanRafId = requestAnimationFrame(scanVideoFrame);
+}
+
+function handleScannedQr(text) {
+  stopQrScan();
+  receiveSection.style.display = 'block';
+
+  let parsed;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return setStatus("That QR code doesn't look like a Beam pairing code.", 'error');
+  }
+  const relay = parsed.searchParams.get('relay');
+  const code = parsed.searchParams.get('code');
+  if (!relay || !code) {
+    return setStatus("That QR code doesn't look like a Beam pairing code.", 'error');
+  }
+
+  relayUrlInput.value = relay;
+  pairingCodeInput.value = code.toUpperCase();
+  setStatus('Pairing...');
+  claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase())
+    .then(() => setStatus('Paired! You can now send and receive.', 'success'))
+    .catch((err) => setStatus(`Pairing failed: ${err.message}`, 'error'));
+}
+
+if (scanQrBtn) {
+  scanQrBtn.addEventListener('click', async () => {
+    receiveSection.style.display = 'none';
+    scanSection.style.display = 'block';
+    scanStatus.textContent = 'Requesting camera access…';
+    try {
+      // "environment" (the back/main camera) beats the front-facing default
+      // on a phone — that's the one that can actually see another screen.
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      scanVideo.srcObject = scanStream;
+      await scanVideo.play();
+      scanStatus.textContent = 'Point your camera at the QR code';
+      scanRafId = requestAnimationFrame(scanVideoFrame);
+    } catch (err) {
+      scanStatus.textContent = `Couldn't access the camera: ${err.message}`;
+    }
+  });
+}
+if (scanCancelBtn) {
+  scanCancelBtn.addEventListener('click', () => {
+    stopQrScan();
+    receiveSection.style.display = 'block';
+  });
 }
 
 document.getElementById('pair-btn').addEventListener('click', async () => {
@@ -326,6 +441,23 @@ async function claimFromQrScan() {
   const relay = params.get('relay');
   const code = params.get('code');
   if (!relay || !code) return false;
+
+  // The scanned link's ?relay=&code= stays in the URL after a successful
+  // pairing (nothing ever cleared it) — refreshing the phone re-ran this
+  // exact function every time, re-claiming an already-used code, which
+  // fails and wipes out the perfectly valid session that was already
+  // active. This is "refreshing loses the connection." Strip the params
+  // unconditionally, before anything else, so no later reload can retrigger
+  // this regardless of which branch below runs.
+  window.history.replaceState(null, '', window.location.pathname);
+
+  // Also don't attempt to re-claim if this device is already mid-session —
+  // covers the case where the params somehow survive (e.g. a bookmarked
+  // link) while a still-valid token already exists in localStorage.
+  const existing = loadConfig();
+  if (existing.token && existing.expiresAt && existing.expiresAt > Date.now()) {
+    return false;
+  }
 
   relayUrlInput.value = relay;
   pairingCodeInput.value = code.toUpperCase();
@@ -498,8 +630,12 @@ document.getElementById('send-link-btn').addEventListener('click', async () => {
       body: JSON.stringify({ url }),
     });
     if (res.status === 401) return enterEndedState();
-    if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Beamed!', 'success');
+    if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    // Names the actual content sent instead of a generic "Beamed!" — the
+    // sender no longer sees this item echo back into their own Received
+    // tab (the relay excludes them from their own broadcast now), so this
+    // status line is the one place confirming exactly what went out.
+    setStatus(`Sent: "${truncate(url, 60)}"`, 'success');
     document.getElementById('link-url').value = '';
   } catch (err) {
     setStatus(`Failed to send: ${err.message}`, 'error');
@@ -606,8 +742,8 @@ sendPhotoBtn.addEventListener('click', async () => {
       body: fd,
     });
     if (res.status === 401) return enterEndedState();
-    if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Photo beamed!', 'success');
+    if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    setStatus(`Sent: ${truncate(selectedPhotoFile.name || 'photo', 60)}`, 'success');
     setSelectedPhoto(null);
     photoFileInput.value = '';
   } catch (err) {

@@ -12,7 +12,7 @@ router.get('/', requireToken, (req, res) => {
   });
   res.write('\n');
 
-  sse.subscribe(req.device.inbox_id, res);
+  sse.subscribe(req.device.inbox_id, req.device.id, res);
 
   // Shorter than before as a defensive margin against proxy/NAT idle
   // timeouts (mobile carriers in particular can be aggressive) — cheap

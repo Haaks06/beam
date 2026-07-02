@@ -86,6 +86,17 @@ if (!itemsColumns.some((c) => c.name === 'from_inbox_id')) {
   db.exec('ALTER TABLE items ADD COLUMN from_inbox_id INTEGER REFERENCES inboxes(id)');
 }
 
+// items.from_device_id: which of the pairing's two devices actually sent
+// this item, as opposed to inbox_id which both devices share. Needed so
+// the sender's own SSE broadcast and backlog can exclude what it just
+// sent — without this, the shared-inbox broadcast model means a device
+// sees its own outgoing item echo right back at it in "Received," which
+// reads as if the transfer looped back instead of confirming it went out.
+const itemsColumnsForDevice = db.prepare('PRAGMA table_info(items)').all();
+if (!itemsColumnsForDevice.some((c) => c.name === 'from_device_id')) {
+  db.exec('ALTER TABLE items ADD COLUMN from_device_id INTEGER REFERENCES devices(id)');
+}
+
 // accounts/connections/connect_codes are leftovers from the pre-ephemeral
 // era (real usernames/passwords, friend connections, admin) — no route
 // reads or writes them anymore. They can't just be left inert: node:sqlite

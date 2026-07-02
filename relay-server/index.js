@@ -42,16 +42,27 @@ app.use(express.json());
 // proved too tight in practice: retrying "Start Beaming" a few times, or
 // a household/office behind one shared IP, burns through it and looks
 // like the app is silently broken.
+// express-rate-limit's default handler replies with plain text ("Too many
+// requests, please try again later.") — every client error path here
+// unconditionally calls res.json() on a non-2xx response, so a rate limit
+// hit surfaced as a raw "Unexpected token 'T' ... is not valid JSON" parse
+// error instead of a readable message. One shared JSON handler for all
+// three limiters fixes it at the source instead of patching every caller.
+const rateLimitHandler = (req, res) => {
+  res.status(429).json({ error: 'Too many requests — wait a moment and try again.' });
+};
+
 const inboxLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 30,
+  handler: rateLimitHandler,
 });
 app.use('/inbox', inboxLimiter, inboxRoutes);
 
-const pairLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20 });
+const pairLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, handler: rateLimitHandler });
 app.use('/pair', pairLimiter, pairRoutes);
 
-const itemLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120 });
+const itemLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, handler: rateLimitHandler });
 app.use('/items', itemLimiter, itemRoutes);
 
 app.use('/events', streamRoutes);

@@ -390,6 +390,15 @@ button.link:hover { color: var(--fg); background: none; }
   transition: opacity 0.35s ease;
 }
 .scan-frame img.qr.loaded { opacity: 1; }
+.scan-frame video {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #000;
+}
 
 #invite-section { text-align: center; }
 #invite-code {

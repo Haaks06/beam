@@ -58,19 +58,22 @@ test('accepts plain text, not just http(s) urls', async () => {
   assert.equal(postRes.body.content, 'pick up milk');
 });
 
-test('submits a link and retrieves it via backlog', async () => {
-  const token = await pairedToken();
+test('submits a link and the other device in the pairing retrieves it via backlog', async () => {
+  const ownerToken = await pairedToken();
+  const otherDeviceToken = await addDeviceToInbox(ownerToken);
   const postRes = await request(app)
     .post('/items/link')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Authorization', `Bearer ${ownerToken}`)
     .send({ url: 'https://example.com/page' })
     .expect(201);
   assert.equal(postRes.body.type, 'link');
   assert.equal(postRes.body.content, 'https://example.com/page');
 
+  // Not the sender's own backlog — see items.test.js's dedicated
+  // "never sees its own sent item" test for that half of the behavior.
   const listRes = await request(app)
     .get('/items?since=0')
-    .set('Authorization', `Bearer ${token}`)
+    .set('Authorization', `Bearer ${otherDeviceToken}`)
     .expect(200);
   assert.equal(listRes.body.items.length, 1);
   assert.equal(listRes.body.items[0].id, postRes.body.id);
@@ -105,6 +108,7 @@ test('rejects an unsupported file type', async () => {
 
 test('items posted in one inbox are invisible to another inbox', async () => {
   const tokenA = await pairedToken('inbox A');
+  const otherDeviceInA = await addDeviceToInbox(tokenA, 'inbox A, second device');
   const tokenB = await pairedToken('inbox B');
 
   await request(app)
@@ -113,12 +117,15 @@ test('items posted in one inbox are invisible to another inbox', async () => {
     .send({ url: 'https://inbox-a.example.com' })
     .expect(201);
 
-  const listA = await request(app)
+  // The other device sharing inbox A gets it...
+  const listOtherInA = await request(app)
     .get('/items?since=0')
-    .set('Authorization', `Bearer ${tokenA}`)
+    .set('Authorization', `Bearer ${otherDeviceInA}`)
     .expect(200);
-  assert.equal(listA.body.items.length, 1);
+  assert.equal(listOtherInA.body.items.length, 1);
 
+  // ...but an entirely different inbox never does, regardless of the
+  // self-echo exclusion above.
   const listB = await request(app)
     .get('/items?since=0')
     .set('Authorization', `Bearer ${tokenB}`)
@@ -165,4 +172,31 @@ test('multiple devices in the same inbox share the same items', async () => {
     .expect(200);
   assert.equal(asOwner.body.items.length, 1);
   assert.equal(asOwner.body.items[0].content, 'https://shared-inbox.example.com');
+});
+
+// A shared inbox otherwise means the sender's own item reappears in its
+// own "Received" list — reads as if the transfer looped back rather than
+// confirming it actually went to the other device.
+test('a device never sees its own sent item in its own backlog, but the other device does', async () => {
+  const ownerToken = await pairedToken('owner');
+  const secondDeviceToken = await addDeviceToInbox(ownerToken);
+
+  await request(app)
+    .post('/items/link')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({ url: 'https://sender-should-not-see-this.example.com' })
+    .expect(201);
+
+  const asSender = await request(app)
+    .get('/items?since=0')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+  assert.deepEqual(asSender.body.items, []);
+
+  const asOtherDevice = await request(app)
+    .get('/items?since=0')
+    .set('Authorization', `Bearer ${secondDeviceToken}`)
+    .expect(200);
+  assert.equal(asOtherDevice.body.items.length, 1);
+  assert.equal(asOtherDevice.body.items[0].content, 'https://sender-should-not-see-this.example.com');
 });

@@ -10,14 +10,19 @@ const router = express.Router();
 router.use(requireToken);
 
 const insertLink = db.prepare(
-  `INSERT INTO items (inbox_id, type, content, source_label, created_at) VALUES (?, 'link', ?, ?, ?)`
+  `INSERT INTO items (inbox_id, type, content, source_label, created_at, from_device_id) VALUES (?, 'link', ?, ?, ?, ?)`
 );
 const insertPhoto = db.prepare(
-  `INSERT INTO items (inbox_id, type, file_path, mime_type, source_label, created_at)
-   VALUES (?, 'photo', ?, ?, ?, ?)`
+  `INSERT INTO items (inbox_id, type, file_path, mime_type, source_label, created_at, from_device_id)
+   VALUES (?, 'photo', ?, ?, ?, ?, ?)`
 );
+// Excludes the caller's own sends (from_device_id = this device) — a shared
+// inbox otherwise means your own history reappears in "Received" as if it
+// had looped back, which is what actually happens live via SSE too (see
+// the broadcast calls below). Older rows from before from_device_id
+// existed have it NULL; treated as "not mine" (shown) rather than guessed.
 const getItemsSince = db.prepare(
-  'SELECT * FROM items WHERE inbox_id = ? AND id > ? ORDER BY id ASC'
+  'SELECT * FROM items WHERE inbox_id = ? AND id > ? AND (from_device_id IS NULL OR from_device_id != ?) ORDER BY id ASC'
 );
 // Scoped by inbox_id, not just id — otherwise item ids are guessable
 // across inboxes and one inbox could fetch another inbox's photos.
@@ -35,7 +40,7 @@ router.post('/link', (req, res) => {
   }
 
   const createdAt = Date.now();
-  const result = insertLink.run(req.device.inbox_id, content, req.device.label, createdAt);
+  const result = insertLink.run(req.device.inbox_id, content, req.device.label, createdAt, req.device.id);
   const item = {
     id: result.lastInsertRowid,
     type: 'link',
@@ -43,7 +48,10 @@ router.post('/link', (req, res) => {
     sourceLabel: req.device.label,
     createdAt,
   };
-  sse.broadcast(req.device.inbox_id, item);
+  // Excludes the sender's own connection — it already knows what it just
+  // sent (see the confirmation status the client shows immediately), so
+  // echoing it back over the live stream just looks like a stray receive.
+  sse.broadcast(req.device.inbox_id, item, req.device.id);
   res.status(201).json(item);
 });
 
@@ -58,7 +66,8 @@ router.post('/photo', upload.single('file'), (req, res) => {
     req.file.filename,
     req.file.mimetype,
     req.device.label,
-    createdAt
+    createdAt,
+    req.device.id
   );
   const item = {
     id: result.lastInsertRowid,
@@ -68,7 +77,7 @@ router.post('/photo', upload.single('file'), (req, res) => {
     createdAt,
     fileUrl: `/items/${result.lastInsertRowid}/file`,
   };
-  sse.broadcast(req.device.inbox_id, item);
+  sse.broadcast(req.device.inbox_id, item, req.device.id);
   res.status(201).json(item);
 });
 
@@ -76,7 +85,7 @@ router.post('/photo', upload.single('file'), (req, res) => {
 // guarantee across reconnects, so clients pull anything missed using this.
 router.get('/', (req, res) => {
   const since = Number(req.query.since) || 0;
-  const rows = getItemsSince.all(req.device.inbox_id, since);
+  const rows = getItemsSince.all(req.device.inbox_id, since, req.device.id);
   const items = rows.map((row) => ({
     id: row.id,
     type: row.type,

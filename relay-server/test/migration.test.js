@@ -137,6 +137,12 @@ test('adds paired_at/expires_at to an existing inboxes table without erroring or
   assert.throws(() => db.prepare('SELECT * FROM accounts').get(), /no such table/);
   assert.throws(() => db.prepare('SELECT * FROM connections').get(), /no such table/);
   assert.throws(() => db.prepare('SELECT * FROM connect_codes').get(), /no such table/);
+
+  // from_device_id is brand new here — didn't exist in this era's schema at
+  // all — and the pre-existing item row gets NULL for it, not an error.
+  const itemsColumns = db.prepare('PRAGMA table_info(items)').all().map((c) => c.name);
+  assert.ok(itemsColumns.includes('from_device_id'));
+  assert.equal(item.from_device_id, null);
 });
 
 test('migration is idempotent — requiring db.js again does not error or duplicate columns', () => {
@@ -145,6 +151,8 @@ test('migration is idempotent — requiring db.js again does not error or duplic
   const columns = db.prepare('PRAGMA table_info(inboxes)').all().map((c) => c.name);
   assert.equal(columns.filter((c) => c === 'paired_at').length, 1);
   assert.equal(columns.filter((c) => c === 'expires_at').length, 1);
+  const itemsColumns = db.prepare('PRAGMA table_info(items)').all().map((c) => c.name);
+  assert.equal(itemsColumns.filter((c) => c === 'from_device_id').length, 1);
 });
 
 test('existing /items and /pair routes work unmodified against a migrated database', async () => {
