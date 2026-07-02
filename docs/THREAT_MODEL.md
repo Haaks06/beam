@@ -34,6 +34,54 @@ valid token for your inbox specifically.
   (default 5/hour/IP) separate from `/pair/*`, since it's the one remaining
   fully open endpoint on a shared relay.
 
+## Friend connections (a second, parallel trust boundary)
+
+Everything above describes pairing: joining *your own* inbox as another
+full-access device. Connections (`connections`/`connect_codes` tables,
+`/connect/*` and `/connections/*` routes) are different — they let two
+*different* people's inboxes exchange items without merging them, and
+critically, **claiming a connect code never grants access on its own**.
+Claiming only creates a `pending` row; the code's owner (`target_inbox_id`)
+must separately call `POST /connections/:id/accept` before either side can
+send anything through it. A sent item (`POST /items/link|photo` with a `to`
+= connection id) lands only in the recipient's inbox (`items.inbox_id`) —
+the sender's own backlog never sees it, matching what an "accept before
+anything is shared" model should feel like.
+
+Two things enforced on every `/connections/:id/*` request, worth stating
+explicitly since they're easy to regress: (1) only the row's
+`target_inbox_id` may accept/reject — the requester cannot accept their own
+request; (2) a caller who isn't a party to a connection gets the exact same
+generic 404 as a nonexistent connection id, so connection ids can't be
+enumerated to discover who's connected to whom. `GET /connections` and the
+`to` parameter on sends only ever expose a connection's own `id` and a
+derived `otherLabel`/`isOwnDevice` — raw numeric inbox ids never reach a
+client.
+
+**Out of scope for connections, same as pairing above:** a party's own
+device/token being stolen still grants everything that device could already
+do (read the connection, send through it) — there's no additional
+per-connection secret beyond the underlying device token. `requester_label`/
+`target_label` are self-reported free text (same trust level as
+`source_label` throughout this app already) — good enough for "which of my
+friends is this," not a verified identity.
+
+## Admin auth
+
+A single, env-var-configured credential (`ADMIN_USERNAME`/
+`ADMIN_PASSWORD_HASH`/`SESSION_SECRET`) gated behind real login — not a
+bypass. Fails **closed**: if any of the three env vars are unset, admin
+login rejects every attempt rather than falling back to a default. Sessions
+are a stateless signed token (`expiry.hmac`, no JWT library, no session
+store) in an `httpOnly; Secure; SameSite=Strict` cookie; there's no
+revocation list, so logout only discards the client's copy — the token
+itself stays valid until its ~24h expiry. `/admin/login` has its own much
+stricter rate limit (5/15min/IP) than any other route in this app, since a
+single static credential is exactly the kind of thing online brute force
+targets. v1 admin routes are deliberately **read-only** (list inboxes,
+list connections) — no destructive actions exist yet, smallest reasonable
+surface for a relay that's live on the public internet with a public repo.
+
 ## What is explicitly out of scope
 
 - **A stolen/leaked token.** Any device holding a valid token can read or

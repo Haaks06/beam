@@ -64,8 +64,22 @@ document.getElementById('photos-btn').addEventListener('click', () => window.bea
 document.getElementById('links-btn').addEventListener('click', () => window.beam.openFolder('links'));
 document.getElementById('quit-btn').addEventListener('click', () => window.beam.quit());
 
+const pendingBadge = document.getElementById('pending-badge');
+document.getElementById('web-panel-btn').addEventListener('click', () => window.beam.openWebPanel());
+pendingBadge.addEventListener('click', () => window.beam.openWebPanel());
+
+function renderPendingCount(count) {
+  if (count > 0) {
+    pendingBadge.textContent = count;
+    pendingBadge.style.display = 'inline-block';
+  } else {
+    pendingBadge.style.display = 'none';
+  }
+}
+
 window.beam.onItemsUpdated(renderItems);
 window.beam.onStatusUpdated(renderStatus);
 
 window.beam.getItems().then(renderItems);
 window.beam.getStatus().then(renderStatus);
+window.beam.getPendingCount().then(renderPendingCount);

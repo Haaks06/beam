@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('beam', {
   openPhoto: (filePath) => ipcRenderer.invoke('hub:open-photo', filePath),
   pairDevice: () => ipcRenderer.invoke('hub:pair'),
   quit: () => ipcRenderer.invoke('hub:quit'),
+  getPendingCount: () => ipcRenderer.invoke('hub:get-pending-count'),
+  openWebPanel: () => ipcRenderer.invoke('hub:open-web-panel'),
   onItemsUpdated: (cb) => ipcRenderer.on('items-updated', (_event, items) => cb(items)),
   onStatusUpdated: (cb) => ipcRenderer.on('status-updated', (_event, status) => cb(status)),
 });

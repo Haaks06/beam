@@ -403,6 +403,44 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('hub:quit', () => app.quit());
 
+  // Not building a full friend-management UI in Electron for v1 — the web
+  // client already has one. This just needs to count how many pending
+  // requests are waiting so the Hub can show a badge prompting you to go
+  // handle them there.
+  ipcMain.handle('hub:get-pending-count', async () => {
+    const config = store.load();
+    if (!config.token) return 0;
+    try {
+      const res = await fetch(`${config.relayUrl}/connections`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+      });
+      if (!res.ok) return 0;
+      const { connections } = await res.json();
+      return connections.filter((c) => c.status === 'pending' && c.role === 'target').length;
+    } catch {
+      return 0;
+    }
+  });
+
+  // A bare shell.openExternal(relayUrl) would land on a blank, unpaired
+  // page — the OS browser has no access to this Electron app's stored
+  // token. Minting a fresh invite code and opening its pairingUrl instead
+  // (same call showPairingWindow already makes) lands the browser one
+  // click from paired, reusing web-client's existing ?relay=&code= prefill.
+  ipcMain.handle('hub:open-web-panel', async () => {
+    const config = store.load();
+    try {
+      const res = await fetch(`${config.relayUrl}/pair/init`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.token}` },
+      });
+      const data = await res.json();
+      shell.openExternal(res.ok ? data.pairingUrl : config.relayUrl);
+    } catch {
+      shell.openExternal(config.relayUrl || DEFAULT_RELAY_URL);
+    }
+  });
+
   // Lets this PC join an existing inbox by typing a code instead of always
   // being the one that generates one — the desktop app previously had no
   // way to become a *joining* device at all, only an owner.

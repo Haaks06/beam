@@ -61,9 +61,20 @@ const pairingCodeInput = document.getElementById('pairing-code');
 const inviteSection = document.getElementById('invite-section');
 const inviteCodeEl = document.getElementById('invite-code');
 const inviteQrEl = document.getElementById('invite-qr');
+const friendsSection = document.getElementById('friends-section');
+const friendCodeInput = document.getElementById('friend-code-input');
+const friendInviteOverlay = document.getElementById('friend-invite-overlay');
+const friendInviteCodeEl = document.getElementById('friend-invite-code');
+const friendInviteQrEl = document.getElementById('friend-invite-qr');
+const pendingRequestsWrap = document.getElementById('pending-requests');
+const pendingList = document.getElementById('pending-list');
+const friendsEmpty = document.getElementById('friends-empty');
+const friendsList = document.getElementById('friends-list');
+const sendToSelect = document.getElementById('send-to-select');
 
 let eventSource = null;
 let invitePollTimer = null;
+let friendInvitePollTimer = null;
 
 function setStatus(message, variant) {
   statusEl.textContent = message;
@@ -79,12 +90,14 @@ function refreshPairedState() {
   pairedBanner.style.display = paired ? 'block' : 'none';
   startSection.classList.toggle('collapsed', paired);
   pairedActions.style.display = paired ? 'block' : 'none';
+  friendsSection.style.display = paired ? 'block' : 'none';
   shareSection.style.display = paired ? 'block' : 'none';
   receivedSection.style.display = paired ? 'block' : 'none';
   repairLink.style.display = paired ? 'block' : 'none';
   if (relayUrl) relayUrlInput.value = relayUrl;
   if (paired) {
     connectReceivedFeed();
+    loadConnections();
   } else {
     disconnectReceivedFeed();
   }
@@ -107,6 +120,12 @@ function prefillFromQrScan() {
   const code = params.get('code');
   if (relay) relayUrlInput.value = relay;
   if (code) pairingCodeInput.value = code.toUpperCase();
+
+  // A friend's "Invite a friend" QR uses connectRelay/connectCode (not
+  // relay/code) so it can never be confused with a device-pairing QR —
+  // scanning one shouldn't silently join someone else's device sync.
+  const connectCode = params.get('connectCode');
+  if (connectCode) friendCodeInput.value = connectCode.toUpperCase();
 }
 
 // When this page is served BY the relay itself (the normal production
@@ -206,17 +225,150 @@ document.getElementById('invite-cancel-btn').addEventListener('click', () => {
   inviteSection.style.display = 'none';
 });
 
+// --- Friends (separate from device pairing above — connects two
+// DIFFERENT people's inboxes, gated on the other side explicitly
+// accepting, rather than joining the same shared inbox) ---
+
+async function loadConnections() {
+  const { relayUrl, token } = loadConfig();
+  if (!token) return;
+  try {
+    const res = await fetch(`${relayUrl}/connections`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const { connections } = await res.json();
+    renderConnections(connections);
+  } catch {
+    // Best-effort — friends list just won't update this cycle.
+  }
+}
+
+function renderConnections(connections) {
+  const pending = connections.filter((c) => c.status === 'pending' && c.role === 'target');
+  const accepted = connections.filter((c) => c.status === 'accepted');
+
+  pendingRequestsWrap.style.display = pending.length ? 'block' : 'none';
+  pendingList.innerHTML = '';
+  for (const conn of pending) {
+    const row = document.createElement('div');
+    row.className = 'connection-row';
+    const name = document.createElement('span');
+    name.textContent = conn.otherLabel;
+    const actions = document.createElement('span');
+    actions.className = 'actions';
+    const acceptBtn = document.createElement('button');
+    acceptBtn.className = 'accept';
+    acceptBtn.textContent = 'Accept';
+    acceptBtn.addEventListener('click', () => respondToConnection(conn.id, 'accept'));
+    const rejectBtn = document.createElement('button');
+    rejectBtn.className = 'reject';
+    rejectBtn.textContent = 'Reject';
+    rejectBtn.addEventListener('click', () => respondToConnection(conn.id, 'reject'));
+    actions.append(acceptBtn, rejectBtn);
+    row.append(name, actions);
+    pendingList.appendChild(row);
+  }
+
+  friendsEmpty.style.display = accepted.length ? 'none' : 'block';
+  friendsList.innerHTML = '';
+  // Rebuild the send-to options: keep "My other devices", add one per friend.
+  sendToSelect.innerHTML = '<option value="">My other devices</option>';
+  for (const conn of accepted) {
+    const row = document.createElement('div');
+    row.className = 'connection-row';
+    const name = document.createElement('span');
+    name.textContent = conn.otherLabel;
+    row.appendChild(name);
+    friendsList.appendChild(row);
+
+    const option = document.createElement('option');
+    option.value = conn.id;
+    option.textContent = conn.otherLabel;
+    sendToSelect.appendChild(option);
+  }
+}
+
+async function respondToConnection(connectionId, action) {
+  const { relayUrl, token } = loadConfig();
+  try {
+    const res = await fetch(`${relayUrl}/connections/${connectionId}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || `${action} failed`);
+    await loadConnections();
+    setStatus(action === 'accept' ? 'Friend added!' : 'Request rejected.', action === 'accept' ? 'success' : null);
+  } catch (err) {
+    setStatus(`Couldn't ${action}: ${err.message}`, 'error');
+  }
+}
+
+document.getElementById('invite-friend-btn').addEventListener('click', async () => {
+  const { relayUrl, token } = loadConfig();
+  if (!token) return setStatus('Start Beaming first.', 'error');
+  try {
+    const res = await fetch(`${relayUrl}/connect/init`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: deviceLabel() }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
+    const data = await res.json();
+    friendInviteCodeEl.textContent = data.connectCode;
+    friendInviteQrEl.src = data.qrDataUrl;
+    friendInviteOverlay.style.display = 'block';
+    pollFriendInvite();
+  } catch (err) {
+    setStatus(`Couldn't invite a friend: ${err.message}`, 'error');
+  }
+});
+
+function pollFriendInvite() {
+  clearInterval(friendInvitePollTimer);
+  // No separate "was it claimed yet" status endpoint for connect codes
+  // (unlike device pairing) — claiming only creates a PENDING connection,
+  // so there's nothing actionable to show here until the friends list
+  // itself changes; just keep it refreshed while the overlay is open.
+  friendInvitePollTimer = setInterval(loadConnections, 3000);
+}
+
+document.getElementById('friend-invite-cancel-btn').addEventListener('click', () => {
+  clearInterval(friendInvitePollTimer);
+  friendInviteOverlay.style.display = 'none';
+});
+
+document.getElementById('add-friend-btn').addEventListener('click', async () => {
+  const { relayUrl, token } = loadConfig();
+  const code = friendCodeInput.value.trim().toUpperCase();
+  if (!token) return setStatus('Start Beaming first.', 'error');
+  if (!code) return setStatus('Enter a code.', 'error');
+  try {
+    setStatus('Sending request...');
+    const res = await fetch(`${relayUrl}/connect/claim`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, label: deviceLabel() }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'failed to add friend');
+    friendCodeInput.value = '';
+    await loadConnections();
+    setStatus('Request sent — waiting for them to accept.', 'success');
+  } catch (err) {
+    setStatus(`Couldn't add friend: ${err.message}`, 'error');
+  }
+});
+
 document.getElementById('send-link-btn').addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();
   const url = document.getElementById('link-url').value.trim();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!url) return setStatus('Enter something to send.', 'error');
+  const to = sendToSelect.value || undefined;
   try {
     setStatus('Sending...');
     const res = await fetch(`${relayUrl}/items/link`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, to }),
     });
     if (!res.ok) throw new Error((await res.json()).error || 'send failed');
     setStatus('Sent!', 'success');
@@ -236,6 +388,7 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
     setStatus('Sending photo...');
     const fd = new FormData();
     fd.append('file', file);
+    if (sendToSelect.value) fd.append('to', sendToSelect.value);
     const res = await fetch(`${relayUrl}/items/photo`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -300,6 +453,13 @@ function renderItem(item, { prepend } = { prepend: true }) {
   meta.className = 'meta';
   meta.textContent = [time, from].filter(Boolean).join(' · ');
   row.appendChild(meta);
+
+  if (item.isOwnDevice === false) {
+    const badge = document.createElement('span');
+    badge.className = 'friend-badge';
+    badge.textContent = 'from a friend';
+    row.appendChild(badge);
+  }
 
   if (prepend) {
     receivedList.prepend(row);

@@ -52,6 +52,19 @@
       cursor: grab;
     }
     .wordmark { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; }
+    .pending-badge {
+      display: none;
+      -webkit-app-region: no-drag;
+      background: var(--accent);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 1px 6px;
+      margin-left: 4px;
+      cursor: pointer;
+      vertical-align: middle;
+    }
     .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
     .dot {
       width: 6px;
@@ -124,12 +137,13 @@
       background: none;
       border: none;
       color: var(--muted);
-      font-size: 11px;
-      padding: 10px 4px;
+      font-size: 10px;
+      padding: 10px 2px;
       cursor: pointer;
       font-family: inherit;
       border-right: 1px solid var(--line);
       transition: color 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
     }
     footer button:last-child { border-right: none; }
     footer button:hover { color: var(--fg); background: var(--hover); }
@@ -138,14 +152,15 @@
 </head>
 <body>
   <header>
-    <span class="wordmark">Beam</span>
+    <span class="wordmark">Beam <span id="pending-badge" class="pending-badge"></span></span>
     <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
   </header>
   <div id="items">
     <div class="empty">Nothing shared yet</div>
   </div>
   <footer>
-    <button id="pair-btn">Pair device</button>
+    <button id="pair-btn" title="Add another of your own devices">Pair device</button>
+    <button id="web-panel-btn" title="Manage friends, send from this PC">Web</button>
     <button id="photos-btn">Photos</button>
     <button id="links-btn">Links</button>
     <button id="quit-btn">Quit</button>

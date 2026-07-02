@@ -31,6 +31,13 @@ authenticated with a long random token scoped to its inbox — still no
 accounts or passwords. See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
 for what this does and doesn't protect against.
 
+**Sharing with someone else** is a separate, parallel flow from the above:
+"Invite a friend" in the web client mints a code that *connects* two
+different people's inboxes rather than merging them — the other side must
+explicitly accept before anything can be sent, and once accepted, sent
+items land only in the recipient's inbox, never the sender's own. See the
+"Friend connections" section of `docs/THREAT_MODEL.md`.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20+ (this machine doesn't have it installed
@@ -55,6 +62,15 @@ migration-safe (`CREATE TABLE IF NOT EXISTS` silently no-ops against the
 old schema and every query will fail at runtime). A fresh empty database
 will be recreated automatically on next start.
 
+### Upgrading from before friend connections
+
+Unlike the migration above, **this one is additive and safe — do not
+delete your database.** `relay-server/db.js` adds the new `connections`/
+`connect_codes` tables and an `items.from_inbox_id` column automatically on
+next start, with existing rows backfilled in place. Verified with a
+dedicated test (`relay-server/test/migration.test.js`) that constructs a
+pre-migration database and confirms the upgrade preserves every row.
+
 ## Running locally
 
 ```bash
@@ -77,7 +93,8 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 7. `npm run dev:desktop` — repeat steps 5–6 and confirm the tray app shows a Windows notification and saves the item to `Documents\ShareToPC\links.jsonl` / `Pictures\ShareToPC\`.
 8. Run `ngrok http 3000`, update the desktop app's stored `relayUrl` (delete its config file to force re-pairing against the new URL, or edit it directly — see `desktop-app/store.js` for the config path), and from a real Android phone install the PWA over the ngrok HTTPS URL, pair via the manual page, then share a real link/photo from Chrome/Photos and confirm it reaches the desktop app — including with Wi-Fi off (cellular only), to prove this isn't LAN-limited.
 9. Repeat against the iOS Shortcuts (see `ios-shortcut/README.md`) using the same ngrok URL.
-10. Only after all of the above pass, deploy to Render (below) and re-pair everything against the production URL.
+10. Friend connections (separate from the pairing flow above — two different inboxes, not one shared one): create a second inbox (`curl -X POST http://localhost:3000/inbox -d '{"label":"friend"}'` → `token2`), invite from the first (`curl -X POST http://localhost:3000/connect/init -H "Authorization: Bearer <token>"` → `connectCode`), claim from the second (`curl -X POST http://localhost:3000/connect/claim -H "Authorization: Bearer <token2>" -d '{"code":"<connectCode>"}'` → `connectionId`, status `pending`), confirm sending with that `to` fails with 404 while pending, accept from the first (`curl -X POST http://localhost:3000/connections/<connectionId>/accept -H "Authorization: Bearer <token>"`), then confirm `curl -X POST http://localhost:3000/items/link -H "Authorization: Bearer <token2>" -d '{"url":"...","to":<connectionId>}'` shows up in the first inbox's `/items` but *not* the second's.
+11. Only after all of the above pass, deploy to Render (below) and re-pair everything against the production URL.
 
 ## Deployment: Render (recommended, free tier, easiest)
 
@@ -134,6 +151,30 @@ HTTP).
    (`npm run build -w desktop-app`) once you're happy with it; point its
    default `relayUrl` at your real domain.
 
+## Admin access
+
+Optional — the relay works fine with none of this set (admin login just
+fails closed). To enable a real, login-protected admin view for debugging
+your own deployment:
+
+```bash
+node relay-server/scripts/hash-admin-password.js 'your password here'
+# prints saltHex:hashHex — set as ADMIN_PASSWORD_HASH below
+```
+
+Set three env vars (Fly: `fly secrets set NAME=value`; self-hosted: in your
+`.env`) — never commit the actual values:
+
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD_HASH` (output of the script above)
+- `SESSION_SECRET` (any long random string, e.g. `openssl rand -hex 32`)
+
+Then `POST /admin/login` with `{"username","password"}` (issues an httpOnly
+session cookie), and `GET /admin/inboxes` / `GET /admin/connections` for a
+read-only view of what's on the relay. See the "Admin auth" section of
+`docs/THREAT_MODEL.md` for exactly what this does and doesn't protect
+against.
+
 ## Security notes (short version)
 
 - Pairing codes are short-lived (10 min) and single-use; tokens are 32
@@ -149,3 +190,12 @@ HTTP).
   enforced between inboxes. Within one inbox, the trust model is unchanged
   from the original single-user design: any valid token for that inbox can
   read any item in it. See `docs/THREAT_MODEL.md` for the full picture.
+- Friend connections (two different inboxes) are accept-gated — claiming a
+  connect code only creates a pending request, never access; only the
+  invite's owner can accept it, and connection ids can't be enumerated
+  (non-parties get the same 404 as a nonexistent id). See "Friend
+  connections" in `docs/THREAT_MODEL.md`.
+- Admin login is a single env-var-configured credential, fails closed if
+  unconfigured, rate-limited far more strictly than any other route, and is
+  read-only in this version (no destructive actions). See "Admin auth" in
+  `docs/THREAT_MODEL.md`.

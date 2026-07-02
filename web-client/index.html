@@ -65,6 +65,19 @@
     }
     input:focus { outline: none; border-bottom-color: var(--fg); }
     input::placeholder { color: #4a4a4a; }
+    select {
+      font-size: 14px;
+      padding: 9px 0;
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 6px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--line);
+      color: var(--fg);
+    }
+    select:focus { outline: none; border-bottom-color: var(--fg); }
+    select option { background: var(--bg); color: var(--fg); }
     button {
       font-size: 13px;
       padding: 9px 12px;
@@ -149,6 +162,46 @@
     .item-row a { color: var(--fg); word-break: break-all; }
     .item-row img { max-width: 100%; display: block; margin-top: 8px; border: 1px solid var(--line); }
     .item-row .download { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .item-row .friend-badge {
+      display: inline-block;
+      font-size: 10px;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 3px;
+      padding: 1px 5px;
+      margin-top: 4px;
+    }
+
+    #friend-invite-overlay { display: none; text-align: center; margin-top: 16px; }
+    #friend-invite-code {
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      margin: 12px 0;
+      color: var(--accent);
+    }
+    #friend-invite-qr { width: 140px; height: 140px; margin: 0 auto; display: block; }
+
+    .connection-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .connection-row .actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .connection-row button {
+      width: auto;
+      margin: 0;
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+    .connection-row button.accept { border-color: var(--success); color: var(--success); }
+    .connection-row button.reject { border-color: var(--error); color: var(--error); }
+    #friends-empty, #pending-empty { color: var(--muted); font-size: 12px; }
   </style>
 </head>
 <body>
@@ -176,8 +229,39 @@
     <button id="invite-btn">Invite another device</button>
   </section>
 
+  <section id="friends-section" style="display:none">
+    <p class="section-title">Friends</p>
+    <button id="invite-friend-btn">Invite a friend</button>
+    <div class="divider">or</div>
+    <label>Friend's code<input id="friend-code-input" placeholder="ABC123" maxlength="6" /></label>
+    <button id="add-friend-btn">Add friend</button>
+
+    <div id="friend-invite-overlay">
+      <p class="section-title">Have them enter this code</p>
+      <div id="friend-invite-code"></div>
+      <img id="friend-invite-qr" alt="Connect QR code" />
+      <button id="friend-invite-cancel-btn" class="link">Cancel</button>
+    </div>
+
+    <div id="pending-requests" style="display:none; margin-top:16px;">
+      <p class="section-title">Pending requests</p>
+      <div id="pending-list"></div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <p class="section-title">Your friends</p>
+      <div id="friends-empty">No friends connected yet.</div>
+      <div id="friends-list"></div>
+    </div>
+  </section>
+
   <section id="share-section" style="display:none">
     <p class="section-title">Send</p>
+    <label>Send to
+      <select id="send-to-select">
+        <option value="">My other devices</option>
+      </select>
+    </label>
     <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
     <button id="send-link-btn">Send</button>
     <label>Photo<input id="photo-file" type="file" accept="image/*" /></label>
