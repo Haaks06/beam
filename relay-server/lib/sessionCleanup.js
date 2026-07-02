@@ -38,13 +38,27 @@ function destroyInbox(inboxId) {
   deleteInbox.run(inboxId);
 }
 
+// One inbox failing to delete (an unexpected FK reference, a locked file,
+// anything) must never take the other rows in this sweep — or the whole
+// process, since this runs on an unattended timer — down with it. Learned
+// this the hard way: a single row's DELETE hitting a constraint violation
+// once crashed the server on every 5-second tick until it hit Fly's max
+// restart count.
 function sweep() {
   const now = Date.now();
   for (const { id } of getExpiredPairedInboxes.all(now)) {
-    destroyInbox(id);
+    try {
+      destroyInbox(id);
+    } catch (err) {
+      console.error(`sessionCleanup: failed to destroy expired inbox ${id}`, err);
+    }
   }
   for (const { id } of getAbandonedInboxes.all(now - ABANDONED_TTL_MS)) {
-    destroyInbox(id);
+    try {
+      destroyInbox(id);
+    } catch (err) {
+      console.error(`sessionCleanup: failed to destroy abandoned inbox ${id}`, err);
+    }
   }
 }
 

@@ -120,10 +120,13 @@ test('adds paired_at/expires_at to an existing inboxes table without erroring or
   const item = db.prepare('SELECT * FROM items WHERE id = 1').get();
   assert.equal(item.content, 'https://example.com/pre-existing');
 
-  // The now-unused accounts table isn't dropped by this migration — it's
-  // simply orphaned (no route reads/writes it anymore). Safe, just inert.
-  const account = db.prepare('SELECT * FROM accounts WHERE id = 1').get();
-  assert.equal(account.username, 'olduser');
+  // accounts/connections/connect_codes are dropped, not just left orphaned
+  // — see the crash-regression test below for exactly why leaving them
+  // in place (still declaring REFERENCES inboxes(id)) is actively unsafe,
+  // not merely untidy.
+  assert.throws(() => db.prepare('SELECT * FROM accounts').get(), /no such table/);
+  assert.throws(() => db.prepare('SELECT * FROM connections').get(), /no such table/);
+  assert.throws(() => db.prepare('SELECT * FROM connect_codes').get(), /no such table/);
 });
 
 test('migration is idempotent — requiring db.js again does not error or duplicate columns', () => {
@@ -152,4 +155,27 @@ test('existing /items and /pair routes work unmodified against a migrated databa
     .set('Authorization', 'Bearer pre-existing-token')
     .expect(200);
   assert.ok(init.body.pairingCode);
+});
+
+// This is the actual production incident, reproduced: node:sqlite enforces
+// `PRAGMA foreign_keys = ON` by default, and the old accounts table still
+// declared `REFERENCES inboxes(id)`. The very first background sweep
+// after deploying the ephemeral-pairing model tried to delete an old,
+// long-abandoned inbox that an `accounts` row still pointed at — the
+// DELETE failed with "FOREIGN KEY constraint failed" and crashed the
+// entire process, every 5 seconds, until Fly's max restart count was hit
+// and the app stayed down. Confirms the fix (dropping the legacy tables)
+// actually prevents this, not just in theory. Deliberately LAST: it
+// deletes the shared fixture inbox that every test above depends on.
+test('sweeping an old inbox that a leftover accounts row still references does not crash', () => {
+  delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../lib/sessionCleanup')];
+  const db = require('../db');
+  const { sweep } = require('../lib/sessionCleanup');
+
+  // Old enough to be swept as abandoned (paired_at IS NULL).
+  db.prepare('UPDATE inboxes SET created_at = ? WHERE id = 1').run(Date.now() - 11 * 60 * 1000);
+
+  assert.doesNotThrow(() => sweep());
+  assert.equal(db.prepare('SELECT * FROM inboxes WHERE id = 1').get(), undefined);
 });

@@ -74,4 +74,19 @@ if (!inboxColumns.some((c) => c.name === 'expires_at')) {
 
 db.exec('CREATE INDEX IF NOT EXISTS idx_inboxes_expires_at ON inboxes(expires_at)');
 
+// accounts/connections/connect_codes are leftovers from the pre-ephemeral
+// era (real usernames/passwords, friend connections, admin) — no route
+// reads or writes them anymore. They can't just be left inert: node:sqlite
+// enforces `PRAGMA foreign_keys = ON` by default, and all three tables
+// still declare `REFERENCES inboxes(id)`. The moment lib/sessionCleanup.js
+// tried to delete an old inbox one of these tables still pointed at, the
+// DELETE failed with "FOREIGN KEY constraint failed" and crashed the whole
+// process — every 5 seconds, forever, since the sweep runs on a timer.
+// Dropping them removes the dangling reference at its source. The full
+// pre-migration database is preserved outside of this file (git tag
+// v0.5.0-accounts-era + a Fly volume snapshot taken before this deploy).
+db.exec('DROP TABLE IF EXISTS connections');
+db.exec('DROP TABLE IF EXISTS connect_codes');
+db.exec('DROP TABLE IF EXISTS accounts');
+
 module.exports = db;
