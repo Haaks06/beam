@@ -1,8 +1,8 @@
 {
   "name": "desktop-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Beam links and photos from your phone straight to your PC.",
-  "author": "Beam",
+  "author": "Haaks06",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -18,12 +18,13 @@
     "electron-builder": "^25.0.0"
   },
   "build": {
-    "appId": "com.example.beam",
+    "appId": "com.github.haaks06.beam",
     "productName": "Beam",
     "npmRebuild": false,
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "publisherName": "Haaks06"
     }
   }
 }

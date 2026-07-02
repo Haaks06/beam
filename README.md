@@ -151,6 +151,18 @@ HTTP).
    (`npm run build -w desktop-app`) once you're happy with it; point its
    default `relayUrl` at your real domain.
 
+### The installer is unsigned — what that means for people downloading it
+
+Getting past Windows Smart App Control / SmartScreen requires a paid
+code-signing identity (Azure Trusted Signing or a traditional OV/EV
+certificate, both needing identity/business verification) — not something
+a personal/hobby project does by default, so this installer isn't signed.
+The first time someone runs `Beam Setup *.exe`, Windows will show a blue
+"Windows protected your PC" screen. This is expected, not a sign anything's
+wrong: click **More info**, then **Run anyway**. Since the source is public
+in this repo, anyone concerned can read exactly what the installer does
+before running it, rather than trusting a certificate.
+
 ## Admin access
 
 Optional — the relay works fine with none of this set (admin login just

@@ -50,7 +50,9 @@ function deviceLabel() {
 const statusEl = document.getElementById('status');
 const pairedBanner = document.getElementById('paired-banner');
 const startSection = document.getElementById('start-section');
-const pairedActions = document.getElementById('paired-actions');
+const appShell = document.getElementById('app-shell');
+const myLabelEl = document.getElementById('my-label');
+const myLabelDetailEl = document.getElementById('my-label-detail');
 const shareSection = document.getElementById('share-section');
 const receivedSection = document.getElementById('received-section');
 const receivedList = document.getElementById('received-list');
@@ -82,18 +84,31 @@ function setStatus(message, variant) {
   if (variant) statusEl.classList.add(variant);
 }
 
+// Home / Devices / Friends — separates "do something now" (Home) from
+// "manage my own sync" (Devices) from "manage who I share with" (Friends),
+// instead of every section being visible at once with no hierarchy.
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabPanels = { home: document.getElementById('tab-home'), devices: document.getElementById('tab-devices'), friends: document.getElementById('tab-friends') };
+function activateTab(name) {
+  for (const btn of tabButtons) btn.classList.toggle('active', btn.dataset.tab === name);
+  for (const [key, panel] of Object.entries(tabPanels)) panel.style.display = key === name ? 'block' : 'none';
+}
+for (const btn of tabButtons) {
+  btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+}
+
 // Once paired, the "get started" form has done its job — sweep it away so
-// the page is just "send / receive," not a form you have to look past.
+// the page is just the tabbed app shell, not a form you have to look past.
 function refreshPairedState() {
   const { relayUrl, token } = loadConfig();
   const paired = Boolean(token);
-  pairedBanner.style.display = paired ? 'block' : 'none';
   startSection.classList.toggle('collapsed', paired);
-  pairedActions.style.display = paired ? 'block' : 'none';
-  friendsSection.style.display = paired ? 'block' : 'none';
-  shareSection.style.display = paired ? 'block' : 'none';
-  receivedSection.style.display = paired ? 'block' : 'none';
-  repairLink.style.display = paired ? 'block' : 'none';
+  appShell.style.display = paired ? 'block' : 'none';
+  if (paired) {
+    const label = deviceLabel();
+    myLabelEl.textContent = label;
+    myLabelDetailEl.textContent = label;
+  }
   if (relayUrl) relayUrlInput.value = relayUrl;
   if (paired) {
     connectReceivedFeed();
@@ -106,10 +121,9 @@ function refreshPairedState() {
 repairLink.addEventListener('click', () => {
   disconnectReceivedFeed();
   startSection.classList.remove('collapsed');
-  pairedBanner.style.display = 'none';
-  pairedActions.style.display = 'none';
-  repairLink.style.display = 'none';
+  appShell.style.display = 'none';
   inviteSection.style.display = 'none';
+  activateTab('home');
 });
 
 // Scanning another device's pairing QR opens this page with ?relay=&code=
