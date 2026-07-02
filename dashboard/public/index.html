@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beam — Project Overview</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand"><span class="dot"></span>Beam</div>
+    <p class="brand-sub">Internal overview — local only</p>
+    <a class="nav-link active" data-page="overview">Overview & Flow</a>
+    <a class="nav-link" data-page="fileflow">How a File Moves</a>
+    <a class="nav-link" data-page="security">Security</a>
+    <a class="nav-link" data-page="functions">Functions / API</a>
+    <a class="nav-link" data-page="patchnotes">Patch Notes</a>
+    <div class="nav-meta">relay v0.8.2<br />desktop v0.4.4<br />localhost only</div>
+  </nav>
+
+  <main>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section class="page active" id="page-overview">
+      <h1>What Beam actually is</h1>
+      <p class="page-sub">A 2-device, 2-minute, no-account way to beam a photo or link from one device to another. No cloud storage, no history, no sign-up. This page is a working reference, not marketing — every claim on it is either the real running code or a button that runs the real code live.</p>
+
+      <h2>The mental model</h2>
+      <div class="card-grid">
+        <div class="card">
+          <h3>🔗 Exactly two devices</h3>
+          <p>A "pairing" is never more than two devices. One creates it, the other joins with a code or QR scan. There's no concept of a third device, a group, or a saved contact.</p>
+        </div>
+        <div class="card">
+          <h3>⏱️ Exactly two minutes</h3>
+          <p>The instant the second device joins, a 2-minute clock starts. A background sweep (every 5 seconds) destroys everything about the session the moment it expires — no grace period.</p>
+        </div>
+        <div class="card">
+          <h3>🚫 No accounts, no history</h3>
+          <p>There used to be full username/password accounts, friend lists, and an admin panel. All of it was deliberately removed — see Patch Notes — in favor of this simpler, disposable model.</p>
+        </div>
+        <div class="card">
+          <h3>↔️ Bidirectional once paired</h3>
+          <p>Either device can Send or Receive at any point during the session — nobody is locked into one role for the whole 2 minutes.</p>
+        </div>
+      </div>
+
+      <h2>The high-level flow</h2>
+      <ol class="pipeline">
+        <li class="pipeline-step">
+          <h3>Someone taps "Send" or "Receive"</h3>
+          <p>Send generates a fresh inbox + a pairing code immediately (<code>POST /inbox</code> then <code>POST /pair/init</code>). Receive just opens a form to enter or scan a code — it doesn't create anything until a code is actually claimed.</p>
+        </li>
+        <li class="pipeline-step">
+          <h3>The other device joins</h3>
+          <p>Scanning the QR (or typing the code) hits <code>POST /pair/claim</code>. The instant a second device is present, the inbox is stamped with <code>paired_at</code> and a fixed <code>expires_at</code> exactly 2 minutes later.</p>
+        </li>
+        <li class="pipeline-step">
+          <h3>Either side sends something</h3>
+          <p>A link/text or a photo — see the dedicated "How a File Moves" page for the full breakdown of exactly what happens here.</p>
+        </li>
+        <li class="pipeline-step">
+          <h3>The window closes</h3>
+          <p>2 minutes after pairing, everything about the session — items, uploaded files, both device tokens, the inbox itself — is permanently deleted. Both devices get pushed a <code>session-expired</code> event over their live connection so the UI reacts instantly instead of just going quiet.</p>
+        </li>
+      </ol>
+
+      <h2>Where things run</h2>
+      <table>
+        <tr><th>Piece</th><th>What it is</th><th>Where</th></tr>
+        <tr><td><b>relay-server</b></td><td>Express + <code>node:sqlite</code> API — the only thing that persists anything, and only for the 2-minute window</td><td>Fly.io, <code>beam-wckn2w.fly.dev</code></td></tr>
+        <tr><td><b>web-client</b></td><td>The actual UI — vanilla JS, no framework, built with Vite and served BY the relay itself</td><td>Same origin as the relay</td></tr>
+        <tr><td><b>desktop-app</b></td><td>An Electron shell that just loads the same web-client page — no separate desktop-only UI to keep in sync</td><td>Windows installer, GitHub Releases</td></tr>
+      </table>
+    </section>
+
+    <!-- ============ FILE FLOW ============ -->
+    <section class="page" id="page-fileflow">
+      <h1>How a file actually moves</h1>
+      <p class="page-sub">Every stage a beamed photo passes through, from the moment you pick it to the moment it's permanently gone. Each step names the real file, table, or function responsible — not a simplified stand-in.</p>
+
+      <ol class="pipeline">
+        <li class="pipeline-step">
+          <h3>1. You pick or drop a photo</h3>
+          <p>The Send tab's drop zone accepts a click-to-choose, a drag-and-drop, or a clipboard paste. The file never leaves the browser until you press "Send photo" — picking it only shows a local preview via <code>URL.createObjectURL</code>.</p>
+          <div class="detail">web-client/src/app.js — setSelectedPhoto(), photoDropZone drag/paste handlers</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>2. Upload — POST /items/photo</h3>
+          <p>A multipart request, authenticated by the device's bearer token (<code>requireToken</code> middleware). This is the moment the file actually leaves your device.</p>
+          <div class="detail">relay-server/routes/items.js — router.post('/photo', upload.single('file'), ...)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>3. Validation, before a single byte is trusted</h3>
+          <p>Only <code>image/jpeg</code>, <code>png</code>, <code>webp</code>, or <code>heic</code> are accepted — anything else is rejected outright. A hard 15 MB cap applies. Crucially, the client's original filename is <b>discarded entirely</b> — the server generates its own random name.</p>
+          <div class="detail">relay-server/lib/upload.js — ALLOWED_MIME_EXT, MAX_UPLOAD_BYTES=15MB, filename: crypto.randomUUID() + extension
+  (this is what closes a path-traversal / overwrite vulnerability — the client never controls the on-disk name)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>4. The file is written to disk</h3>
+          <p>Saved under <code>UPLOAD_DIR</code> — in production, a persistent Fly.io volume mounted at <code>/data</code>. This is a genuinely new file on disk, not a database blob.</p>
+          <div class="detail">Example real path: /data/uploads/9f40a2da-a76d-452d-8580-6cde23d79705.jpg</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>5. A row is written to the items table</h3>
+          <p>The row records <code>inbox_id</code> (who can see it), <code>from_device_id</code> (which device sent it — used to make sure the sender never sees their own item echoed back), the generated <code>file_path</code>, mime type, and a timestamp. No original filename, no metadata beyond what's needed to serve it back.</p>
+          <div class="detail">relay-server/db.js — items(id, inbox_id, type, content, file_path, mime_type, source_label, created_at, from_device_id)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>6. Live delivery — if the other device is connected right now</h3>
+          <p>The relay pushes the new item over Server-Sent Events to every open connection on that inbox <b>except the device that just sent it</b> — so you don't see your own upload echo back into your own "Received" list.</p>
+          <div class="detail">relay-server/lib/sse.js — broadcast(inboxId, item, excludeDeviceId)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>7. Catch-up delivery — if it wasn't connected</h3>
+          <p>SSE has no delivery guarantee across a dropped connection or a closed tab. When the receiving device (re)connects, it calls <code>GET /items?since=&lt;lastSeenId&gt;</code>, which returns anything it missed — again, excluding whatever <i>this same device</i> sent, for the same reason as live delivery.</p>
+          <div class="detail">relay-server/routes/items.js — WHERE inbox_id = ? AND id > ? AND (from_device_id IS NULL OR from_device_id != ?)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>8. Actually viewing/downloading it</h3>
+          <p>The photo itself isn't embedded in the item's JSON — the client fetches <code>GET /items/:id/file</code> separately, with its bearer token. The server checks the item's <code>inbox_id</code> matches the token's inbox before streaming a single byte — a stolen item id alone gets you nothing.</p>
+          <div class="detail">relay-server/routes/items.js — getItem.get(req.params.id, req.device.inbox_id) — 404 if it doesn't match</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>9. The 2-minute clock runs out</h3>
+          <p>A background sweep runs every 5 seconds, checking for any inbox whose <code>expires_at</code> has passed. When it finds one, it deletes — in this order — every item row, unlinks every uploaded file from disk, deletes both device rows (revoking both tokens instantly), then deletes the inbox row itself.</p>
+          <div class="detail">relay-server/lib/sessionCleanup.js — sweep() → destroyInbox(inboxId)</div>
+        </li>
+        <li class="pipeline-step">
+          <h3>10. Gone. Genuinely gone.</h3>
+          <p>Not soft-deleted, not archived — the row and the file are both physically removed. Both devices immediately get a <code>session-expired</code> push (not just a timeout on their own countdown) so the UI reacts the instant the server-side deletion happens, not whenever the client's own clock catches up.</p>
+        </li>
+      </ol>
+
+      <h2>See it happen, right now</h2>
+      <p class="muted">This runs the real relay-server code (the same modules production runs) against a disposable temp database and a disposable temp upload folder — nothing here touches real data. It plays out the exact 10 stages above and prints the real file path, the real database state, and the real HTTP responses at each step.</p>
+      <button id="demo-btn">▶ Run the file-flow demo live</button>
+      <pre id="demo-output"></pre>
+    </section>
+
+    <!-- ============ SECURITY ============ -->
+    <section class="page" id="page-security">
+      <h1>Security posture</h1>
+      <p class="page-sub">What's actually enforced today, stated plainly — including the things this deliberately does <i>not</i> defend against, because the ephemeral model makes them moot.</p>
+
+      <h2>What's enforced</h2>
+      <div class="card-grid">
+        <div class="card">
+          <h3>🔑 Bearer token auth <span class="badge ok">enforced</span></h3>
+          <p>Every route except account creation/claiming requires a valid device token, checked against the <code>devices</code> table on every request (<code>requireToken</code> middleware).</p>
+        </div>
+        <div class="card">
+          <h3>📦 Inbox-scoped isolation <span class="badge ok">enforced</span></h3>
+          <p>Every query is scoped by <code>inbox_id</code>, not just a row id. A guessed or stolen item id from a different pairing returns 404, not someone else's data.</p>
+        </div>
+        <div class="card">
+          <h3>🗂️ Path-safe uploads <span class="badge ok">enforced</span></h3>
+          <p>The client's filename is never trusted or used — the server always generates its own (<code>crypto.randomUUID()</code>), closing path traversal and overwrite attacks outright.</p>
+        </div>
+        <div class="card">
+          <h3>🖼️ MIME allowlist + size cap <span class="badge ok">enforced</span></h3>
+          <p>Only jpeg/png/webp/heic accepted; 15 MB hard limit per file (<code>relay-server/lib/upload.js</code>).</p>
+        </div>
+        <div class="card">
+          <h3>🔗 XSS-safe link rendering <span class="badge ok">enforced</span></h3>
+          <p>A sent "link" only ever renders as a clickable <code>&lt;a href&gt;</code> if it actually parses as <code>http:</code> or <code>https:</code>. Anything else (including something like <code>javascript:alert(1)</code>) renders as inert plain text, never as a link target.</p>
+        </div>
+        <div class="card">
+          <h3>🚦 Rate limiting, with readable errors <span class="badge ok">enforced</span></h3>
+          <p><code>/inbox</code>: 120/hour · <code>/pair/*</code>: 20/min · <code>/items/*</code>: 120/min, all per-IP. All three return real JSON on a 429, not the plain-text default that used to crash the client with a parse error.</p>
+        </div>
+        <div class="card">
+          <h3>⏳ Guaranteed data expiry <span class="badge ok">enforced</span></h3>
+          <p>Nothing survives past 2 minutes after pairing (or 10 minutes if a code is generated and never claimed) — enforced by a background sweep, not by trusting clients to clean up after themselves.</p>
+        </div>
+        <div class="card">
+          <h3>🌐 CORS + Helmet headers <span class="badge ok">enforced</span></h3>
+          <p>Standard security headers via <code>helmet</code>; CORS origin restricted via <code>CORS_ORIGIN</code> env var when set, permissive only in local dev.</p>
+        </div>
+      </div>
+
+      <h2>What this deliberately doesn't have (and why that's fine here)</h2>
+      <table>
+        <tr><th>Not present</th><th>Why it's an acceptable tradeoff</th></tr>
+        <tr><td>Accounts / passwords</td><td>Removed on purpose — see Patch Notes. No credentials means no credential-stuffing, no password database to leak, nothing to phish for.</td></tr>
+        <tr><td>Long-term history</td><td>There's nothing to breach two minutes after any given pairing — the data simply doesn't exist anymore.</td></tr>
+        <tr><td>End-to-end encryption</td><td>Traffic is encrypted in transit (HTTPS), but the relay itself can technically see file contents for the ~2-minute window they exist. Worth knowing if that matters for your use case.</td></tr>
+        <tr><td>Abuse-proof rate limiting</td><td>Per-IP limiting is imperfect behind CGNAT/shared IPs — accepted tradeoff for keeping the limits generous enough not to block real usage (this has already been raised twice this session after real false positives).</td></tr>
+      </table>
+
+      <h2>A real incident, for transparency</h2>
+      <p>Deploying the ephemeral-pairing rewrite briefly took production down: <code>node:sqlite</code> enforces foreign keys by default, and a leftover table from the old accounts system still referenced deleted inbox rows, crashing the cleanup sweep every 5 seconds until Fly.io's max-restart limit was hit. Found, fixed, and covered with a regression test reproducing the exact crash within the same session — see Patch Notes for the full writeup. Documented here rather than glossed over.</p>
+    </section>
+
+    <!-- ============ FUNCTIONS / API ============ -->
+    <section class="page" id="page-functions">
+      <h1>Functions &amp; API reference</h1>
+      <p class="page-sub">Every route the relay exposes, what it needs, and what it does.</p>
+
+      <h2>Pairing</h2>
+      <table>
+        <tr><th>Route</th><th>Auth</th><th>Purpose</th></tr>
+        <tr><td class="method post">POST /inbox</td><td>None</td><td>Creates a new inbox and mints the first device's token in one call. This is the ONLY place a new inbox is ever created.</td></tr>
+        <tr><td class="method post">POST /pair/init</td><td>Bearer token</td><td>Generates a pairing code + QR for a <i>second</i> device to join this inbox. Refuses if the inbox already has 2 devices.</td></tr>
+        <tr><td class="method post">POST /pair/claim</td><td>None (can't have a token yet)</td><td>Exchanges a valid, unused, unexpired code for a device token. The second device joining starts the 2-minute clock.</td></tr>
+        <tr><td class="method get">GET /pair/status/:code</td><td>None</td><td>Lets the initiating device poll whether its code has been claimed yet, without exposing the resulting token.</td></tr>
+      </table>
+
+      <h2>Sending &amp; receiving</h2>
+      <table>
+        <tr><th>Route</th><th>Auth</th><th>Purpose</th></tr>
+        <tr><td class="method post">POST /items/link</td><td>Bearer token</td><td>Sends a link or arbitrary text. Broadcasts live to the other device, excluding the sender.</td></tr>
+        <tr><td class="method post">POST /items/photo</td><td>Bearer token</td><td>Multipart photo upload — see the File Flow page for the full pipeline.</td></tr>
+        <tr><td class="method get">GET /items?since=id</td><td>Bearer token</td><td>Backlog/catch-up fetch for anything missed since a given item id — used on reconnect.</td></tr>
+        <tr><td class="method get">GET /items/:id/file</td><td>Bearer token</td><td>Streams a photo's actual bytes. Scoped to the caller's own inbox.</td></tr>
+        <tr><td class="method get">GET /events</td><td>Bearer token (query param, since EventSource can't send headers)</td><td>The live Server-Sent Events stream — pushes new items and a session-expired signal.</td></tr>
+      </table>
+
+      <h2>Misc</h2>
+      <table>
+        <tr><th>Route</th><th>Auth</th><th>Purpose</th></tr>
+        <tr><td class="method get">GET /health</td><td>None</td><td>Returns <code>{ ok, version }</code> — how every deploy in this project gets confirmed live.</td></tr>
+      </table>
+
+      <h2>Client-side building blocks</h2>
+      <div class="card-grid">
+        <div class="card"><h3>web-client/src/app.js</h3><p>The entire UI's logic — session state machine (start → invite → active → ended), the photo drop zone, the in-browser QR camera scanner (jsQR), SSE handling.</p></div>
+        <div class="card"><h3>relay-server/lib/sse.js</h3><p>The pub/sub layer — tracks subscribers per inbox, supports excluding a specific device id from a broadcast.</p></div>
+        <div class="card"><h3>relay-server/lib/sessionCleanup.js</h3><p>The 5-second sweep that makes "ephemeral" actually true, not just a claim in the UI copy.</p></div>
+        <div class="card"><h3>relay-server/lib/upload.js</h3><p>Multer configuration — MIME allowlist, size cap, safe filename generation.</p></div>
+        <div class="card"><h3>desktop-app/main.js</h3><p>Electron shell — just a BrowserWindow pointed at the live relay URL, plus a tray icon and native save/notify bridge for received items.</p></div>
+        <div class="card"><h3>desktop-app/preload.js</h3><p>The bridge exposing <code>window.beamNative</code> — also how the shared web-client code detects "I'm running inside the desktop app" (used to hide the camera scanner there, since Electron's camera permissions aren't wired up).</p></div>
+      </div>
+    </section>
+
+    <!-- ============ PATCH NOTES ============ -->
+    <section class="page" id="page-patchnotes">
+      <h1>Patch notes</h1>
+      <p class="page-sub">The real history, grouped by theme rather than dumped as raw commits — read top to bottom for the story of how this got to where it is.</p>
+
+      <div class="patch">
+        <div class="patch-version">Current — relay v0.8.2 · desktop v0.4.4</div>
+        <h3>Live-usage fixes</h3>
+        <ul>
+          <li><b>Fixed:</b> refreshing the page mid-session (e.g. on a phone) could wipe out a perfectly valid active connection — a leftover URL parameter was re-triggering a pairing claim on every reload.</li>
+          <li><b>Fixed:</b> rate-limit errors crashed the client with a raw JSON-parse error instead of a readable message.</li>
+          <li><b>Fixed:</b> the sender used to see their own sent item echoed back into their own Received tab. Now excluded server-side; the send confirmation names exactly what was sent instead.</li>
+          <li><b>Added:</b> in-browser camera QR scanning (browser only — removed from the desktop app once it turned out Electron's camera permissions aren't set up for it).</li>
+          <li><b>Raised:</b> the inbox-creation rate limit twice (5/hr → 30/hr → 120/hr) after real testing kept hitting it during normal use.</li>
+        </ul>
+      </div>
+
+      <div class="patch">
+        <div class="patch-version">Frontend redesign</div>
+        <h3>Send/Receive intent-first UI</h3>
+        <ul>
+          <li>Landing screen now leads with two explicit choices — Send / Receive — instead of one generic "Start" button, matching how AirDrop/Nearby Share/Snapdrop frame the same decision (researched before building).</li>
+          <li>Photo sending became the primary action: drag-and-drop, click-to-choose, or clipboard paste, with a live preview — link/text moved to a secondary toggle.</li>
+          <li>Removed the desktop app's default Windows File/Edit/View/Window/Help menu bar.</li>
+        </ul>
+      </div>
+
+      <div class="patch">
+        <div class="patch-version">Major rewrite</div>
+        <h3>Simplified to ephemeral 2-device pairing</h3>
+        <ul>
+          <li>Removed accounts, friend connections, and the admin panel entirely in favor of the current 2-device / 2-minute model.</li>
+          <li><b>Production incident:</b> the rewrite briefly took the live app down — a missing database migration, then a second foreign-key crash from leftover legacy data, both found and fixed with regression tests within the same session. A full pre-rewrite snapshot was preserved (git tag + a Fly volume snapshot) before any of this shipped.</li>
+          <li>Desktop app simplified to just load the same web page instead of maintaining separate Hub/pairing/welcome windows.</li>
+        </ul>
+      </div>
+
+      <div class="patch">
+        <div class="patch-version">Earlier era (since removed)</div>
+        <h3>Real accounts, friends, admin panel</h3>
+        <ul>
+          <li>Username/password accounts with async-hashed passwords, random fun display names, and device revocation as the only recovery path (no password reset).</li>
+          <li>Friend-to-friend sharing, separate from device pairing, accept-gated with IDOR-safe responses.</li>
+          <li>A real admin auth system, fail-closed, rate-limited.</li>
+          <li>All of the above was deliberately removed in the rewrite above — this history exists for context, not because any of it still runs.</li>
+        </ul>
+      </div>
+
+      <div class="patch">
+        <div class="patch-version">Foundational</div>
+        <h3>Early product decisions</h3>
+        <ul>
+          <li>Moved from a single shared inbox to full multi-device, then to friend-to-friend sharing, then back to today's simpler 2-device model — the product went through real exploration, not a straight line.</li>
+          <li>Fixed a string of early reliability issues: fresh-deploy upload directory creation, SSE reconnect data loss, stale-token recovery, clipboard/notification spam during backlog catch-up.</li>
+          <li>Moved hosting from Render to Fly.io for a persistent volume.</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
