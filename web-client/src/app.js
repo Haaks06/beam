@@ -333,7 +333,13 @@ const scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
 let scanStream = null;
 let scanRafId = null;
 
-const canScanQr = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+// window.beamNative only exists inside the packaged Electron app (see
+// desktop-app/preload.js) — camera permissions there aren't wired up the
+// way a real browser handles them, so getUserMedia just fails/hangs
+// instead of prompting properly. Scanning still works fine in an actual
+// mobile/desktop browser, where this stays available.
+const isDesktopApp = !!window.beamNative;
+const canScanQr = !isDesktopApp && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 if (!canScanQr && scanQrBtn) scanQrBtn.style.display = 'none';
 
 function stopQrScan() {
