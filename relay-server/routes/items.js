@@ -23,24 +23,20 @@ const getItemsSince = db.prepare(
 // across inboxes and one inbox could fetch another inbox's photos.
 const getItem = db.prepare('SELECT * FROM items WHERE id = ? AND inbox_id = ?');
 
-function isHttpUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 router.post('/link', (req, res) => {
+  // Despite the route name, this accepts arbitrary text, not just http(s)
+  // URLs — requiring a scheme meant typing "example.com" or pasting a note
+  // failed outright. The web client only linkifies content that actually
+  // parses as a URL; anything else renders as plain text.
   const { url } = req.body || {};
-  if (!url || !isHttpUrl(url)) {
-    return res.status(400).json({ error: 'a valid http(s) url is required' });
+  const content = typeof url === 'string' ? url.trim() : '';
+  if (!content) {
+    return res.status(400).json({ error: 'text is required' });
   }
 
   const createdAt = Date.now();
-  const result = insertLink.run(req.device.inbox_id, url, req.device.label, createdAt);
-  const item = { id: result.lastInsertRowid, type: 'link', content: url, sourceLabel: req.device.label, createdAt };
+  const result = insertLink.run(req.device.inbox_id, content, req.device.label, createdAt);
+  const item = { id: result.lastInsertRowid, type: 'link', content, sourceLabel: req.device.label, createdAt };
   sse.broadcast(req.device.inbox_id, item);
   res.status(201).json(item);
 });

@@ -39,13 +39,23 @@ test('rejects item submission without a token', async () => {
   await request(app).post('/items/link').send({ url: 'https://example.com' }).expect(401);
 });
 
-test('rejects a non-http(s) url', async () => {
+test('rejects empty text', async () => {
   const token = await pairedToken();
   await request(app)
     .post('/items/link')
     .set('Authorization', `Bearer ${token}`)
-    .send({ url: 'javascript:alert(1)' })
+    .send({ url: '   ' })
     .expect(400);
+});
+
+test('accepts plain text, not just http(s) urls', async () => {
+  const token = await pairedToken();
+  const postRes = await request(app)
+    .post('/items/link')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ url: 'pick up milk' })
+    .expect(201);
+  assert.equal(postRes.body.content, 'pick up milk');
 });
 
 test('submits a link and retrieves it via backlog', async () => {

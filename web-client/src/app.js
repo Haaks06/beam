@@ -210,19 +210,19 @@ document.getElementById('send-link-btn').addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();
   const url = document.getElementById('link-url').value.trim();
   if (!token) return setStatus('Pair this device first.', 'error');
-  if (!url) return setStatus('Enter a link to send.', 'error');
+  if (!url) return setStatus('Enter something to send.', 'error');
   try {
-    setStatus('Sending link...');
+    setStatus('Sending...');
     const res = await fetch(`${relayUrl}/items/link`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
     if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Link sent!', 'success');
+    setStatus('Sent!', 'success');
     document.getElementById('link-url').value = '';
   } catch (err) {
-    setStatus(`Failed to send link: ${err.message}`, 'error');
+    setStatus(`Failed to send: ${err.message}`, 'error');
   }
 });
 
@@ -249,6 +249,19 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
   }
 });
 
+// The backend accepts arbitrary text now (see relay-server/routes/items.js),
+// so content is only safe to render as a clickable href when it actually
+// parses as http(s) — anything else (including something like
+// "javascript:alert(1)") must render as inert text, never as a link target.
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function renderItem(item, { prepend } = { prepend: true }) {
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
@@ -258,13 +271,17 @@ function renderItem(item, { prepend } = { prepend: true }) {
   const time = new Date(item.createdAt).toLocaleString();
   const from = item.sourceLabel ? `from ${item.sourceLabel}` : '';
 
-  if (item.type === 'link') {
+  if (item.type === 'link' && isHttpUrl(item.content)) {
     const a = document.createElement('a');
     a.href = item.content;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.textContent = item.content;
     row.appendChild(a);
+  } else if (item.type === 'link') {
+    const span = document.createElement('span');
+    span.textContent = item.content;
+    row.appendChild(span);
   } else if (item.type === 'photo') {
     const fileUrl = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
     const img = document.createElement('img');
@@ -365,3 +382,17 @@ installBtn.addEventListener('click', async () => {
 window.addEventListener('appinstalled', () => {
   installBtn.style.display = 'none';
 });
+
+// So it's always obvious which deploy is actually live, instead of guessing
+// whether a change made it to production yet.
+(async () => {
+  try {
+    const { relayUrl } = loadConfig();
+    const base = (relayUrl || window.location.origin).replace(/\/+$/, '');
+    const res = await fetch(`${base}/health`);
+    const { version } = await res.json();
+    if (version) document.getElementById('version-footer').textContent = `Beam v${version}`;
+  } catch {
+    // Non-essential — leave the footer blank if the relay isn't reachable yet.
+  }
+})();

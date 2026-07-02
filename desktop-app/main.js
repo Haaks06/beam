@@ -67,10 +67,13 @@ app.whenReady().then(async () => {
     return;
   }
 
+  // Start listening immediately, regardless of whether the welcome/pairing
+  // window is still open — it used to wait until that window closed, so
+  // anything sent while you were still on the pairing screen (the most
+  // likely moment to test it) sat undelivered until you closed the window.
+  startRelayClient();
   if (needsPairing) {
-    showWelcomeWindow(() => startRelayClient());
-  } else {
-    startRelayClient();
+    showWelcomeWindow();
   }
 
   // Render's free tier can wipe the relay's database well before this app
@@ -189,7 +192,7 @@ async function handleItem(item, config) {
 // Only shown once, on first launch: explains what the app does and gets the
 // owner's phone paired immediately, instead of silently vanishing into the
 // (often auto-hidden) tray icon with no explanation.
-function showWelcomeWindow(onClosed) {
+function showWelcomeWindow() {
   const config = store.load();
   welcomeWindow = new BrowserWindow({
     width: 380,
@@ -205,7 +208,6 @@ function showWelcomeWindow(onClosed) {
   welcomeWindow.on('closed', () => {
     welcomeWindow = null;
     notify(`${APP_NAME} is running`, 'Left-click the tray icon anytime to see recent items, pair another device, or quit.');
-    onClosed?.();
   });
 }
 

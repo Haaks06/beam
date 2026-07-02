@@ -1,9 +1,16 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const path = require('node:path');
 const multer = require('multer');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES) || 15 * 1024 * 1024;
+
+// Unlike DB_PATH's directory (created in db.js), nothing else ever creates
+// this. Worked locally by accident — the repo ships data/uploads/.gitkeep
+// — but a fresh volume (e.g. Fly.io's empty /data mount) has no such
+// directory, so every photo upload failed with ENOENT until first fixed here.
+fs.mkdirSync(path.resolve(UPLOAD_DIR), { recursive: true });
 
 const ALLOWED_MIME_EXT = {
   'image/jpeg': '.jpg',

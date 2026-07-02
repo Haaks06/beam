@@ -6,6 +6,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
+const { version: APP_VERSION } = require('../package.json');
+
 const inboxRoutes = require('./routes/inbox');
 const pairRoutes = require('./routes/pair');
 const itemRoutes = require('./routes/items');
@@ -50,7 +52,9 @@ app.use('/items', itemLimiter, itemRoutes);
 
 app.use('/events', streamRoutes);
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Exposes the deployed version so the web client can show it and so anyone
+// checking "is my deploy actually live" has a real answer instead of guessing.
+app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
 
 // Serve the built PWA from the same origin/process when available, so a
 // single relay URL (and a single tunnel/cert in production) covers both

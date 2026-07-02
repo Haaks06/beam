@@ -126,6 +126,7 @@
       cursor: pointer;
     }
     #repair-link:hover { color: var(--fg); }
+    #version-footer { text-align: center; font-size: 10px; color: #4a4a4a; margin-top: 24px; }
 
     /* Invite overlay: shown while waiting for a second device to type the code in. */
     #invite-section { display: none; text-align: center; }
@@ -177,8 +178,8 @@
 
   <section id="share-section" style="display:none">
     <p class="section-title">Send</p>
-    <label>Link<input id="link-url" placeholder="https://example.com" /></label>
-    <button id="send-link-btn">Send link</button>
+    <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
+    <button id="send-link-btn">Send</button>
     <label>Photo<input id="photo-file" type="file" accept="image/*" /></label>
     <button id="send-photo-btn">Send photo</button>
   </section>
@@ -191,6 +192,7 @@
 
   <div id="status"></div>
   <div id="repair-link">Pair a different device</div>
+  <div id="version-footer"></div>
 
   <script type="module" src="/src/app.js"></script>
 </body>
