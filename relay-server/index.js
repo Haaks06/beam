@@ -39,9 +39,12 @@ app.use(express.json());
 // requires a token (see routes/pair.js) — legitimate use is "once per new
 // person setting up the app," so a stricter, hourly cap keeps mass
 // inbox-creation abuse expensive without blocking normal setup. 5/hour
-// proved too tight in practice: retrying "Start Beaming" a few times, or
-// a household/office behind one shared IP, burns through it and looks
-// like the app is silently broken.
+// proved too tight in practice; 30/hour still did too — every single
+// "tap Send, test, start over" cycle burns one of these, and testing/
+// demoing the app a bit heavily blew through it well before an hour was
+// up, surfacing as a genuine-looking "the app is broken" error. Inbox
+// rows are cheap and self-cleaning (see lib/sessionCleanup.js's 10-minute
+// abandoned-inbox sweep), so there's room to be much more generous here.
 // express-rate-limit's default handler replies with plain text ("Too many
 // requests, please try again later.") — every client error path here
 // unconditionally calls res.json() on a non-2xx response, so a rate limit
@@ -54,7 +57,7 @@ const rateLimitHandler = (req, res) => {
 
 const inboxLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 30,
+  limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 120,
   handler: rateLimitHandler,
 });
 app.use('/inbox', inboxLimiter, inboxRoutes);
