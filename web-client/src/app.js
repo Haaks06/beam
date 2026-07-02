@@ -221,8 +221,18 @@ function prefillFromQrScan() {
     // Scanning a pairing QR means the code section is exactly what this
     // visit is for — it can't stay collapsed behind the "Have a pairing
     // code?" link the way it does for a cold landing-page visit.
-    const codeSection = document.getElementById('code-section');
     if (codeSection) codeSection.style.display = 'block';
+    // The scanning device (usually a phone) is very often already paired
+    // to something else from an earlier session — refreshPairedState()
+    // would otherwise collapse this whole form to zero height (the same
+    // CSS "start-section is done, get out of the way" behavior a normal
+    // already-paired visit relies on), making the code it just scanned
+    // completely inaccessible. A scanned code always wins: force the
+    // pairing form open and stop the old inbox's live feed, exactly like
+    // clicking "Pair a different device" would.
+    disconnectReceivedFeed();
+    startSection.classList.remove('collapsed');
+    appShell.style.display = 'none';
   }
 
   // A friend's "Invite a friend" QR uses connectRelay/connectCode (not
@@ -785,8 +795,8 @@ if (shareStatus === 'ok') setStatus('Shared!', 'success');
 if (shareStatus === 'error') setStatus('Share failed — check pairing.', 'error');
 
 prefillRelayUrl();
-prefillFromQrScan();
 refreshPairedState();
+prefillFromQrScan();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js', { type: 'module' }).catch((err) => {
