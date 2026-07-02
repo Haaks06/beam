@@ -90,6 +90,21 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
 
+  -- A real username/password identity — still optional, still just another
+  -- way to obtain a device token (alongside POST /inbox and /pair/claim),
+  -- not a parallel system: signup creates an inbox + account + device
+  -- token together, so every existing route keeps working unchanged since
+  -- they all key off req.device.inbox_id regardless of how the token was
+  -- obtained. inbox_id is UNIQUE (real 1:1, not just app-level convention).
+  CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    inbox_id INTEGER NOT NULL UNIQUE REFERENCES inboxes(id),
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_items_inbox_id ON items(inbox_id);
   CREATE INDEX IF NOT EXISTS idx_devices_inbox_id ON devices(inbox_id);
   CREATE INDEX IF NOT EXISTS idx_connections_inbox_a ON connections(inbox_a_id);

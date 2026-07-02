@@ -134,12 +134,24 @@ initRouter.post('/claim', requireToken, (req, res) => {
 // discover who's connected to whom.
 const connectionsRouter = express.Router();
 
+const getAccountDisplayNameByInboxId = db.prepare('SELECT display_name FROM accounts WHERE inbox_id = ?');
+
+// Prefers the OTHER party's real account display_name (e.g. "frenzy
+// horse") over whatever free-text label was supplied at claim/init time,
+// looked up at READ time rather than baked in when the connection was
+// created. Read-time means this self-heals: someone who connected while
+// anonymous and later signs up for an account automatically shows their
+// real name on existing connections, with no backfill needed. Falls back
+// to the stored label for still-anonymous inboxes — unchanged behavior.
 function serialize(row, callerInboxId) {
   const isTarget = row.target_inbox_id === callerInboxId;
+  const otherInboxId = isTarget ? row.requester_inbox_id : row.target_inbox_id;
+  const otherAccount = getAccountDisplayNameByInboxId.get(otherInboxId);
+  const fallbackLabel = isTarget ? row.requester_label : row.target_label;
   return {
     id: row.id,
     role: isTarget ? 'target' : 'requester',
-    otherLabel: (isTarget ? row.requester_label : row.target_label) || 'Unnamed',
+    otherLabel: (otherAccount && otherAccount.display_name) || fallbackLabel || 'Unnamed',
     status: row.status,
     createdAt: row.created_at,
   };

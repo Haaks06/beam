@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { verifyPassword } = require('./passwordHash');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || '';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || ''; // "saltHex:hashHex"
@@ -21,17 +22,11 @@ function fixedLengthEqual(a, b) {
 // Fails CLOSED (rejects all logins) if not configured, rather than silently
 // falling back to some default credential — this relay is live on the
 // public internet.
-function verifyCredentials(username, password) {
+async function verifyCredentials(username, password) {
   if (!ADMIN_USERNAME || !ADMIN_PASSWORD_HASH || !SESSION_SECRET) return false;
   if (typeof username !== 'string' || typeof password !== 'string') return false;
   if (!fixedLengthEqual(username, ADMIN_USERNAME)) return false;
-
-  const [saltHex, hashHex] = ADMIN_PASSWORD_HASH.split(':');
-  if (!saltHex || !hashHex) return false;
-  const salt = Buffer.from(saltHex, 'hex');
-  const expected = Buffer.from(hashHex, 'hex');
-  const candidate = crypto.scryptSync(password, salt, expected.length);
-  return crypto.timingSafeEqual(candidate, expected);
+  return verifyPassword(password, ADMIN_PASSWORD_HASH);
 }
 
 // Stateless session: no JSON, no jsonwebtoken dependency — just

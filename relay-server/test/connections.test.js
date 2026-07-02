@@ -195,3 +195,31 @@ test('an unknown or expired connect code is rejected', async () => {
   const res = await claimConnect(bob, 'ZZZZZZ', 'Bob');
   assert.equal(res.status, 404);
 });
+
+test('an account holder\'s real display_name overrides their self-reported label; an anonymous party still shows their self-reported label', async () => {
+  const signupRes = await request(app)
+    .post('/auth/signup')
+    .send({ username: `aliceacct${Date.now()}`, password: 'a-fine-password', label: 'Alice-self-reported' })
+    .expect(201);
+  const alice = signupRes.body.token;
+  const aliceDisplayName = signupRes.body.displayName;
+
+  const bob = await newInbox('Bob'); // stays anonymous throughout
+
+  const code = await initConnect(alice, 'Alice-init-label'); // this label should be ignored at display time
+  const claimRes = await claimConnect(bob, code, "Bob's phone").expect(201);
+  await request(app)
+    .post(`/connections/${claimRes.body.connectionId}/accept`)
+    .set('Authorization', `Bearer ${alice}`)
+    .expect(200);
+
+  // Bob (anonymous) looking at Alice (account holder): sees her real
+  // display_name, not either self-reported label she supplied.
+  const bobsView = await request(app).get('/connections').set('Authorization', `Bearer ${bob}`).expect(200);
+  assert.equal(bobsView.body.connections[0].otherLabel, aliceDisplayName);
+
+  // Alice (account holder) looking at Bob (still anonymous): sees his
+  // self-reported label, unchanged fallback behavior.
+  const alicesView = await request(app).get('/connections').set('Authorization', `Bearer ${alice}`).expect(200);
+  assert.equal(alicesView.body.connections[0].otherLabel, "Bob's phone");
+});

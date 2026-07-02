@@ -73,6 +73,12 @@ const pendingList = document.getElementById('pending-list');
 const friendsEmpty = document.getElementById('friends-empty');
 const friendsList = document.getElementById('friends-list');
 const sendToSelect = document.getElementById('send-to-select');
+const signupUsernameInput = document.getElementById('signup-username');
+const signupPasswordInput = document.getElementById('signup-password');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const devicesEmpty = document.getElementById('devices-empty');
+const devicesList = document.getElementById('devices-list');
 
 let eventSource = null;
 let invitePollTimer = null;
@@ -105,16 +111,37 @@ function refreshPairedState() {
   startSection.classList.toggle('collapsed', paired);
   appShell.style.display = paired ? 'block' : 'none';
   if (paired) {
+    // Fallback shown immediately; replaced by the real account display_name
+    // (e.g. "frenzy horse") a moment later if this token belongs to an
+    // account — checked on every load via GET /auth/me, not just once at
+    // signup time, so it persists correctly across reloads.
     const label = deviceLabel();
     myLabelEl.textContent = label;
     myLabelDetailEl.textContent = label;
+    loadIdentity();
   }
   if (relayUrl) relayUrlInput.value = relayUrl;
   if (paired) {
     connectReceivedFeed();
     loadConnections();
+    loadDevices();
   } else {
     disconnectReceivedFeed();
+  }
+}
+
+async function loadIdentity() {
+  const { relayUrl, token } = loadConfig();
+  try {
+    const res = await fetch(`${relayUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const { isAccount, displayName } = await res.json();
+    if (isAccount && displayName) {
+      myLabelEl.textContent = displayName;
+      myLabelDetailEl.textContent = displayName;
+    }
+  } catch {
+    // Best-effort — keep the device-label fallback already shown.
   }
 }
 
@@ -171,6 +198,52 @@ document.getElementById('start-btn').addEventListener('click', async () => {
     await showInvite();
   } catch (err) {
     setStatus(`Couldn't start: ${err.message}`, 'error');
+  }
+});
+
+document.getElementById('signup-btn').addEventListener('click', async () => {
+  const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+  const username = signupUsernameInput.value.trim();
+  const password = signupPasswordInput.value;
+  if (!username || !password) return setStatus('Enter a username and password.', 'error');
+  try {
+    setStatus('Creating account...');
+    const res = await fetch(`${relayUrl}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, label: deviceLabel() }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'signup failed');
+    const { token, displayName } = await res.json();
+    await saveConfig({ relayUrl, token });
+    refreshPairedState();
+    setStatus(`Welcome! You're "${displayName}".`, 'success');
+    signupPasswordInput.value = '';
+  } catch (err) {
+    setStatus(`Couldn't create account: ${err.message}`, 'error');
+  }
+});
+
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+  const username = loginUsernameInput.value.trim();
+  const password = loginPasswordInput.value;
+  if (!username || !password) return setStatus('Enter your username and password.', 'error');
+  try {
+    setStatus('Logging in...');
+    const res = await fetch(`${relayUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, label: deviceLabel() }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'login failed');
+    const { token, displayName } = await res.json();
+    await saveConfig({ relayUrl, token });
+    refreshPairedState();
+    setStatus(`Logged in as "${displayName}".`, 'success');
+    loginPasswordInput.value = '';
+  } catch (err) {
+    setStatus(`Couldn't log in: ${err.message}`, 'error');
   }
 });
 
@@ -370,6 +443,64 @@ document.getElementById('add-friend-btn').addEventListener('click', async () => 
     setStatus(`Couldn't add friend: ${err.message}`, 'error');
   }
 });
+
+// --- Devices: works for both account holders and anonymous inboxes (the
+// underlying GET /auth/devices only needs a valid token, not an account) —
+// this is also the recovery path once a password exists with no reset
+// flow, so it's not optional polish.
+async function loadDevices() {
+  const { relayUrl, token } = loadConfig();
+  if (!token) return;
+  try {
+    const res = await fetch(`${relayUrl}/auth/devices`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const { devices } = await res.json();
+    renderDevices(devices);
+  } catch {
+    // Best-effort — device list just won't update this cycle.
+  }
+}
+
+function renderDevices(devices) {
+  devicesEmpty.style.display = devices.length ? 'none' : 'block';
+  devicesList.innerHTML = '';
+  for (const device of devices) {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    const meta = document.createElement('span');
+    meta.textContent = device.label || 'Unnamed device';
+    if (device.isCurrent) {
+      const badge = document.createElement('span');
+      badge.className = 'current-badge';
+      badge.textContent = 'this device';
+      meta.appendChild(badge);
+    }
+    row.appendChild(meta);
+    if (!device.isCurrent) {
+      const revokeBtn = document.createElement('button');
+      revokeBtn.className = 'revoke';
+      revokeBtn.textContent = 'Revoke';
+      revokeBtn.addEventListener('click', () => revokeDevice(device.id));
+      row.appendChild(revokeBtn);
+    }
+    devicesList.appendChild(row);
+  }
+}
+
+async function revokeDevice(deviceId) {
+  const { relayUrl, token } = loadConfig();
+  try {
+    const res = await fetch(`${relayUrl}/auth/devices/${deviceId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'revoke failed');
+    await loadDevices();
+    setStatus('Device revoked.', 'success');
+  } catch (err) {
+    setStatus(`Couldn't revoke device: ${err.message}`, 'error');
+  }
+}
 
 document.getElementById('send-link-btn').addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();

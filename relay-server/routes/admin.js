@@ -11,9 +11,9 @@ const router = express.Router();
 // nothing stops someone just guessing repeatedly without this.
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5 });
 
-router.post('/login', loginLimiter, (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body || {};
-  if (!verifyCredentials(username, password)) {
+  if (!(await verifyCredentials(username, password))) {
     return res.status(401).json({ error: 'invalid credentials' });
   }
   const token = issueSessionToken();

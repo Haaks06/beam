@@ -14,6 +14,7 @@ const itemRoutes = require('./routes/items');
 const streamRoutes = require('./routes/stream');
 const { initRouter: connectInitRoutes, connectionsRouter } = require('./routes/connections');
 const adminRoutes = require('./routes/admin');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -70,6 +71,11 @@ app.use('/connections', connectLimiter, connectionsRouter);
 // needs a tighter limit than the read-only routes on this same prefix).
 app.use('/admin', adminRoutes);
 
+// routes/auth.js applies its own signup/login limiters directly, since the
+// two endpoints need different limits (mass-account-creation vs
+// brute-force concerns).
+app.use('/auth', authRoutes);
+
 // Exposes the deployed version so the web client can show it and so anyone
 // checking "is my deploy actually live" has a real answer instead of guessing.
 app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
@@ -80,7 +86,7 @@ app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
 const webClientDist = path.join(__dirname, '..', 'web-client', 'dist');
 if (fs.existsSync(webClientDist)) {
   app.use(express.static(webClientDist));
-  app.get(/^(?!\/(inbox|pair|items|events|health|connect|connections|admin)).*/, (req, res) => {
+  app.get(/^(?!\/(inbox|pair|items|events|health|connect|connections|admin|auth)).*/, (req, res) => {
     res.sendFile(path.join(webClientDist, 'index.html'));
   });
 }

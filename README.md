@@ -24,12 +24,24 @@ home Wi-Fi.
 
 One relay can be shared by many independent people: each person's devices
 belong to their own private **inbox**, created automatically the first time
-their desktop app runs (`POST /inbox`). Adding a second device to your own
-inbox (e.g. your phone) works by scanning a QR / entering a short-lived
-6-character pairing code shown by the desktop app. Every device is
-authenticated with a long random token scoped to its inbox — still no
-accounts or passwords. See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
-for what this does and doesn't protect against.
+their desktop app runs (`POST /inbox`) — no signup required. Adding a
+second device to your own inbox (e.g. your phone) works by scanning a QR /
+entering a short-lived 6-character pairing code shown by the desktop app.
+Every device is authenticated with a long random token scoped to its
+inbox. See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for what this
+does and doesn't protect against.
+
+**Real accounts are also available**, if you'd rather have a persistent
+username/password identity than an anonymous inbox: sign up from the web
+client or the desktop app's welcome screen, and you're given a random fun
+display name (like "frenzy horse") instead of a self-reported label —
+that's what friends see instead of whatever text you'd otherwise have
+typed in. Logging in on a new device mints it a fresh token tied to the
+same account, same as pairing does, just without needing a code. See the
+"Accounts" section of `docs/THREAT_MODEL.md` — notably, there's no email
+and no password reset by design, so `DELETE /auth/devices/:id` (the web
+client's Devices tab has a list + revoke buttons) is the only recovery
+path if a password leaks.
 
 **Sharing with someone else** is a separate, parallel flow from the above:
 "Invite a friend" in the web client mints a code that *connects* two
@@ -94,7 +106,8 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 8. Run `ngrok http 3000`, update the desktop app's stored `relayUrl` (delete its config file to force re-pairing against the new URL, or edit it directly — see `desktop-app/store.js` for the config path), and from a real Android phone install the PWA over the ngrok HTTPS URL, pair via the manual page, then share a real link/photo from Chrome/Photos and confirm it reaches the desktop app — including with Wi-Fi off (cellular only), to prove this isn't LAN-limited.
 9. Repeat against the iOS Shortcuts (see `ios-shortcut/README.md`) using the same ngrok URL.
 10. Friend connections (separate from the pairing flow above — two different inboxes, not one shared one): create a second inbox (`curl -X POST http://localhost:3000/inbox -d '{"label":"friend"}'` → `token2`), invite from the first (`curl -X POST http://localhost:3000/connect/init -H "Authorization: Bearer <token>"` → `connectCode`), claim from the second (`curl -X POST http://localhost:3000/connect/claim -H "Authorization: Bearer <token2>" -d '{"code":"<connectCode>"}'` → `connectionId`, status `pending`), confirm sending with that `to` fails with 404 while pending, accept from the first (`curl -X POST http://localhost:3000/connections/<connectionId>/accept -H "Authorization: Bearer <token>"`), then confirm `curl -X POST http://localhost:3000/items/link -H "Authorization: Bearer <token2>" -d '{"url":"...","to":<connectionId>}'` shows up in the first inbox's `/items` but *not* the second's.
-11. Only after all of the above pass, deploy to Render (below) and re-pair everything against the production URL.
+11. Accounts: `curl -X POST http://localhost:3000/auth/signup -d '{"username":"test","password":"a-fine-password"}'` → note `token`/`displayName`; `curl http://localhost:3000/auth/me -H "Authorization: Bearer <token>"` should show `{"isAccount":true,"displayName":"..."}`; `curl -X POST http://localhost:3000/auth/login -d '{"username":"test","password":"a-fine-password"}'` from a "second device" → a *different* token, same `displayName`; `curl http://localhost:3000/auth/devices -H "Authorization: Bearer <token>"` should list both.
+12. Only after all of the above pass, deploy to Render (below) and re-pair everything against the production URL.
 
 ## Deployment: Render (recommended, free tier, easiest)
 

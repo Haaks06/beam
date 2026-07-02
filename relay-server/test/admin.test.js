@@ -125,7 +125,7 @@ test('admin login fails closed when not configured', async () => {
   delete require.cache[require.resolve('../lib/adminAuth')];
   const { verifyCredentials } = require('../lib/adminAuth');
 
-  assert.equal(verifyCredentials('testadmin', TEST_PASSWORD), false);
+  assert.equal(await verifyCredentials('testadmin', TEST_PASSWORD), false);
 
   process.env.ADMIN_PASSWORD_HASH = originalHash;
   delete require.cache[require.resolve('../lib/adminAuth')];

@@ -202,6 +202,11 @@
     .connection-row button.accept { border-color: var(--success); color: var(--success); }
     .connection-row button.reject { border-color: var(--error); color: var(--error); }
     #friends-empty, #pending-empty { color: var(--muted); font-size: 12px; }
+    .device-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .device-row .device-meta { font-size: 11px; color: var(--muted); }
+    .device-row .current-badge { font-size: 10px; color: var(--success); border: 1px solid var(--success); border-radius: 3px; padding: 1px 5px; margin-left: 6px; }
+    .device-row button.revoke { width: auto; margin: 0; padding: 5px 10px; font-size: 11px; border-color: var(--error); color: var(--error); flex-shrink: 0; }
+    #devices-empty { color: var(--muted); font-size: 12px; }
 
     #tab-nav {
       display: flex;
@@ -235,6 +240,17 @@
   <section id="start-section">
     <p class="section-title">Get started</p>
     <button id="start-btn" class="primary">Start Beaming on this device</button>
+
+    <div class="divider">or create an account</div>
+    <label>Username<input id="signup-username" placeholder="3-24 characters: letters, numbers, _ or -" /></label>
+    <label>Password<input id="signup-password" type="password" placeholder="At least 8 characters" /></label>
+    <button id="signup-btn">Create account</button>
+
+    <div class="divider">already have an account?</div>
+    <label>Username<input id="login-username" /></label>
+    <label>Password<input id="login-password" type="password" /></label>
+    <button id="login-btn">Log in</button>
+
     <div class="divider">or join a device that's already Beaming</div>
     <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
     <label>Pairing code (shown on the other device)<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
@@ -284,6 +300,12 @@
         <img id="invite-qr" alt="Pairing QR code" />
         <button id="invite-cancel-btn" class="link">Cancel</button>
       </section>
+
+      <div style="margin-top:16px;">
+        <p class="section-title">Your devices</p>
+        <div id="devices-empty">No other devices yet.</div>
+        <div id="devices-list"></div>
+      </div>
 
       <button id="repair-link" class="link">Pair a different device</button>
     </div>

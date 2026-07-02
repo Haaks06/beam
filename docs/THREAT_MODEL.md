@@ -3,9 +3,10 @@
 One relay can be shared by many independent people: each person's devices
 belong to their own **inbox** (`inboxes` table, `inbox_id` on every device,
 item, and pairing code), and isolation is *between* inboxes, not within one.
-There are still no accounts, passwords, or logins — creating an inbox
-(`POST /inbox`) is how a new person gets started, and everything from then
-on works exactly like the original single-user design, just scoped. Within
+Accounts (real username/password, see the "Accounts" section below) are
+optional — creating an anonymous inbox (`POST /inbox`) still works exactly
+like the original single-user design with no signup required, and
+everything else in this document applies equally to both. Within
 one inbox, the trust model is unchanged from before: any device holding a
 valid token for that inbox can read/write everything in it — there is still
 no per-device read scoping *within* an inbox, by design (this is what lets
@@ -82,14 +83,58 @@ targets. v1 admin routes are deliberately **read-only** (list inboxes,
 list connections) — no destructive actions exist yet, smallest reasonable
 surface for a relay that's live on the public internet with a public repo.
 
+## Accounts (real username/password, optional)
+
+An account is not a parallel system — it's just another way to obtain a
+device token, alongside `POST /inbox` (anonymous) and `/pair/claim` (join
+an existing inbox via code). `POST /auth/signup` creates an inbox +
+account + device token together, so every existing route keeps working
+completely unchanged: they all key off `req.device.inbox_id` regardless of
+how the token was obtained. `POST /auth/login` mints a *new* device token
+tied to the account's existing inbox, reusing the same multi-device-per-
+inbox model pairing already supports — it does not touch or return any
+previously-issued token.
+
+- **Password storage**: scrypt via `lib/passwordHash.js`, salted, async
+  (not `scryptSync` — sync scrypt blocks Node's entire event loop for the
+  duration of the hash, which would let login/signup traffic stall every
+  other in-flight request; async offloads it to libuv's threadpool).
+- **Timing-safe login**: a username lookup **miss** still runs a full
+  `verifyPassword` against a fixed dummy hash before returning 401, so it
+  costs the same as a **wrong password** on a real account — without this,
+  the response-time difference is a trivial oracle for enumerating which
+  usernames exist.
+- **Race-safe signup**: the async hash means a uniqueness pre-check can't
+  be the authority (two concurrent signups for the same username could
+  both pass it) — the `accounts.username` `UNIQUE` constraint at insert
+  time is what actually decides; a collision there is caught and mapped to
+  a clean `409`, not a crash. Covered by a dedicated concurrency test
+  (`test/auth.test.js`).
+- **No email, no password reset, by design** (the ask was specifically
+  "just a username and a password"). This means a leaked/reused password
+  is otherwise a **permanent, invisible, unrevokable** backdoor to that
+  inbox — which is exactly why `GET /auth/devices` + `DELETE
+  /auth/devices/:id` exist as a v1 requirement, not a fast-follow: they're
+  the only recovery path. A soft cap (20 devices/inbox) on login also stops
+  a compromised credential from silently minting unlimited devices before
+  anyone notices.
+- **Display name, not raw labels, for connections**: `accounts.display_name`
+  (a random "adjective noun" assigned once at signup, not user-editable in
+  v1) overrides whatever self-reported label was supplied when a friend
+  connection was formed — resolved at *read time* in
+  `routes/connections.js`'s `serialize()`, not baked in at write time, so
+  it self-heals (an account created after a connection already exists
+  still shows the real name on it, no backfill needed).
+
 ## What is explicitly out of scope
 
 - **A stolen/leaked token.** Any device holding a valid token can read or
   write to that token's entire inbox (but no other inbox) — there's no
-  per-device read scoping within an inbox. If your phone is lost or a token
-  leaks, the mitigation is deleting that device's row from `devices` in the
-  relay's SQLite database (or wiping your inbox's rows and re-pairing
-  everything), not a live revoke endpoint.
+  per-device read scoping within an inbox. For an account-linked inbox,
+  `DELETE /auth/devices/:id` (see "Accounts" above) is now a real, live
+  revoke path — no direct database access needed. For a still-anonymous
+  inbox, the mitigation remains manual: deleting that device's row from
+  `devices` directly, or wiping the inbox's rows and re-pairing everything.
 - **Network-level attackers without HTTPS.** Tokens travel in the
   `Authorization` header (or, for the SSE endpoint, a query parameter) — if
   the relay is ever exposed over plain HTTP, anyone on the network path can
@@ -105,14 +150,15 @@ surface for a relay that's live on the public internet with a public repo.
   need hardening (e.g. the `file-type` package, image re-encoding) before
   ever accepting uploads from untrusted parties.
 
-## Why this is an acceptable tradeoff here
+## Why anonymous inboxes still exist alongside accounts
 
-The alternative — full user accounts with passwords/logins, per-device
-ACLs, token revocation endpoints — is real engineering effort that doesn't
-serve the actual use case: each person moving links and photos to their own
-computer, possibly on a relay someone else is hosting for them. Adding an
-`inbox_id` boundary gets genuine multi-person isolation without any of
-that: creating an inbox is just "run the app for the first time," and the
-pairing-code flow for adding a second device is unchanged. This stays
-simple enough to explain and reason about, which matters both for a class
-project and for software you have to maintain yourself.
+Real accounts (above) exist for anyone who wants a persistent, revocable,
+login-based identity. But requiring one for everyone would be real friction
+that doesn't serve every use case here: someone just moving a link from
+their own phone to their own PC, possibly on a relay someone else is
+hosting for them, doesn't need a password to protect. `inbox_id` isolation
+alone already gets genuine multi-person separation without any of that:
+creating an inbox is still just "run the app for the first time," and the
+pairing-code flow for adding a second device is unchanged. Both models are
+first-class and coexist deliberately, rather than accounts replacing the
+anonymous flow.

@@ -140,6 +140,30 @@
     }
     .join-row button:hover { border-color: var(--accent); color: var(--accent); }
     .join-row button:disabled { opacity: 0.5; cursor: default; }
+    .toggle-link {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .toggle-link:hover { color: var(--fg); }
+    #account-section { display: none; margin-top: 10px; -webkit-app-region: no-drag; }
+    #account-section input {
+      width: 100%;
+      font-size: 13px;
+      padding: 7px 8px;
+      margin-bottom: 6px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--fg);
+      box-sizing: border-box;
+    }
+    #account-section input:focus { outline: none; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -157,6 +181,16 @@
     <div class="join-row">
       <input id="claim-code-input" placeholder="Their code" maxlength="6" />
       <button id="claim-btn">Join</button>
+    </div>
+    <hr />
+    <button id="toggle-account-btn" class="toggle-link">Use a username &amp; password instead</button>
+    <div id="account-section">
+      <input id="account-username" placeholder="Username" />
+      <input id="account-password" type="password" placeholder="Password (8+ characters)" />
+      <div class="join-row">
+        <button id="account-signup-btn">Create account</button>
+        <button id="account-login-btn">Log in</button>
+      </div>
     </div>
   </main>
   <script src="pairing.js"></script>

@@ -83,3 +83,45 @@ if (claimBtn && claimInput && window.beamPair) {
     }
   });
 }
+
+// Username/password account signup+login — only present in welcome.html
+// (first-run), not the "invite another device" pairing.html this same
+// script is shared with.
+const toggleAccountBtn = document.getElementById('toggle-account-btn');
+const accountSection = document.getElementById('account-section');
+const accountUsernameInput = document.getElementById('account-username');
+const accountPasswordInput = document.getElementById('account-password');
+const accountSignupBtn = document.getElementById('account-signup-btn');
+const accountLoginBtn = document.getElementById('account-login-btn');
+
+if (toggleAccountBtn && accountSection) {
+  toggleAccountBtn.addEventListener('click', () => {
+    const showing = accountSection.style.display === 'block';
+    accountSection.style.display = showing ? 'none' : 'block';
+    toggleAccountBtn.textContent = showing ? 'Use a username & password instead' : 'Hide';
+  });
+}
+
+async function handleAccountAction(button, ipcCall) {
+  const username = accountUsernameInput.value.trim();
+  const password = accountPasswordInput.value;
+  if (!username || !password) return setStatus('Enter a username and password.', 'error');
+  button.disabled = true;
+  setStatus('Working…');
+  const result = await ipcCall(username, password);
+  if (result.ok) {
+    clearInterval(pollTimer);
+    setStatus(`You're "${result.displayName}"! Closing…`, 'success');
+    setTimeout(() => window.close(), 1500);
+  } else {
+    button.disabled = false;
+    setStatus(result.error, 'error');
+  }
+}
+
+if (accountSignupBtn && window.beamPair) {
+  accountSignupBtn.addEventListener('click', () => handleAccountAction(accountSignupBtn, window.beamPair.signupAccount));
+}
+if (accountLoginBtn && window.beamPair) {
+  accountLoginBtn.addEventListener('click', () => handleAccountAction(accountLoginBtn, window.beamPair.loginAccount));
+}

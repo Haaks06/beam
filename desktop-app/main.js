@@ -248,8 +248,9 @@ function showWelcomeWindow() {
   welcomeWindow = new BrowserWindow({
     width: 380,
     // Tall enough for the intro video (up to 260px), the pairing content,
-    // and the "join with a code" section below it, without scrolling.
-    height: 840,
+    // "join with a code", and the expanded username/password account
+    // section below it, without scrolling (this is a fixed-size window).
+    height: 960,
     resizable: false,
     show: false,
     opacity: 0,
@@ -468,4 +469,36 @@ function registerIpcHandlers() {
       return { ok: false, error: err.message };
     }
   });
+
+  // Shared by both signup and login — same shape of success/failure, same
+  // post-success side effect (switch this device over to the new token).
+  async function claimAccountToken(endpoint, username, password) {
+    if (!username || !password) {
+      return { ok: false, error: 'enter a username and password' };
+    }
+    try {
+      const res = await fetch(`${DEFAULT_RELAY_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, label: 'Desktop (Windows)' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: data.error || `relay returned ${res.status}` };
+      }
+      store.update({ relayUrl: DEFAULT_RELAY_URL, token: data.token, hasSeenWelcome: true, lastSeenId: 0 });
+      relayClient?.stop();
+      startRelayClient();
+      return { ok: true, displayName: data.displayName };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  ipcMain.handle('pairing:signup-account', (event, username, password) =>
+    claimAccountToken('/auth/signup', username, password)
+  );
+  ipcMain.handle('pairing:login-account', (event, username, password) =>
+    claimAccountToken('/auth/login', username, password)
+  );
 }

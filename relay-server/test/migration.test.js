@@ -66,11 +66,27 @@ test('adds from_inbox_id and backfills existing rows without touching their data
   assert.equal(row.from_inbox_id, row.inbox_id, 'pre-existing row should be backfilled to from_inbox_id = inbox_id');
   assert.equal(row.content, 'https://example.com/pre-existing', 'pre-existing content must be untouched');
 
-  // New tables should also now exist (both are additive, no data to preserve).
+  // New tables should also now exist (all additive, no data to preserve).
   const connectionsColumns = db.prepare('PRAGMA table_info(connections)').all();
   assert.ok(connectionsColumns.length > 0, 'connections table should exist after migration');
   const connectCodesColumns = db.prepare('PRAGMA table_info(connect_codes)').all();
   assert.ok(connectCodesColumns.length > 0, 'connect_codes table should exist after migration');
+  const accountsColumns = db.prepare('PRAGMA table_info(accounts)').all();
+  assert.ok(accountsColumns.length > 0, 'accounts table should exist after migration');
+});
+
+test('signup works cleanly against a database migrated from the old schema', async () => {
+  delete require.cache[require.resolve('../db')];
+  delete require.cache[require.resolve('../index')];
+  const request = require('supertest');
+  const app = require('../index');
+
+  const res = await request(app)
+    .post('/auth/signup')
+    .send({ username: `migtest${Date.now() % 100000}`, password: 'a-fine-password' })
+    .expect(201);
+  assert.ok(res.body.token);
+  assert.match(res.body.displayName, /^\w+ \w+$/);
 });
 
 test('migration is idempotent — running it again does not error or lose data', () => {
