@@ -1,38 +1,37 @@
-# App name is assigned when the app is created via `fly launch`/`fly apps
-# create` (must be globally unique on Fly.io) — update this to match once
-# created, per docs/HOSTING.md.
-app = "beam-relay"
-primary_region = "iad"
+# fly.toml app configuration file generated for beam-wckn2w on 2026-07-02T00:53:56Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'beam-wckn2w'
+primary_region = 'ams'
 
 [build]
 
 [env]
-  DB_PATH = "/data/relay.sqlite"
-  UPLOAD_DIR = "/data/uploads"
-  MAX_UPLOAD_BYTES = "15728640"
-  CORS_ORIGIN = ""
-  INBOX_LIMIT_PER_HOUR = "5"
+  CORS_ORIGIN = ''
+  DB_PATH = '/data/relay.sqlite'
+  INBOX_LIMIT_PER_HOUR = '5'
+  MAX_UPLOAD_BYTES = '15728640'
+  UPLOAD_DIR = '/data/uploads'
 
 [[mounts]]
-  source = "beam_data"
-  destination = "/data"
+  source = 'beam_data'
+  destination = '/data'
 
 [http_service]
-  internal_port = 3000
+  internal_port = 8080
   force_https = true
-  # The whole point of moving off Render's free tier: never scale to zero,
-  # so pairings survive idle periods instead of being wiped on every
-  # sleep/wake cycle.
-  auto_stop_machines = false
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
-[[http_service.checks]]
-  path = "/health"
-  interval = "30s"
-  timeout = "5s"
-  grace_period = "10s"
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
