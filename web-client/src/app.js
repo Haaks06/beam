@@ -100,11 +100,12 @@ function setStatus(message, variant) {
   if (variant) statusEl.classList.add(variant);
 }
 
-// Home / Devices / Friends — separates "do something now" (Home) from
-// "manage my own sync" (Devices) from "manage who I share with" (Friends),
-// instead of every section being visible at once with no hierarchy.
+// Send / Manage — separates "do something now" (Send: pick a recipient,
+// pick text/link/photo, send) from occasional setup (Manage: pairing
+// other devices, adding friends), instead of three tabs and a dozen
+// visible sections all competing for attention at once.
 const tabButtons = document.querySelectorAll('.tab-btn');
-const tabPanels = { home: document.getElementById('tab-home'), devices: document.getElementById('tab-devices'), friends: document.getElementById('tab-friends') };
+const tabPanels = { send: document.getElementById('tab-send'), manage: document.getElementById('tab-manage') };
 function positionTabIndicator() {
   const active = document.querySelector('.tab-btn.active');
   if (!active || !tabIndicator) return;
@@ -182,8 +183,31 @@ repairLink.addEventListener('click', () => {
   startSection.classList.remove('collapsed');
   appShell.style.display = 'none';
   inviteSection.style.display = 'none';
-  activateTab('home');
+  activateTab('send');
 });
+
+// The landing screen leads with one action (Start Beaming); signing in
+// and joining-with-a-code are secondary paths tucked behind links so a
+// first-time visitor isn't shown two forms' worth of fields before doing
+// anything.
+const showAccountBtn = document.getElementById('show-account-btn');
+const showCodeBtn = document.getElementById('show-code-btn');
+const accountSection = document.getElementById('account-section');
+const codeSection = document.getElementById('code-section');
+if (showAccountBtn && accountSection) {
+  showAccountBtn.addEventListener('click', () => {
+    const willShow = accountSection.style.display === 'none';
+    accountSection.style.display = willShow ? 'block' : 'none';
+    if (willShow) accountUsernameInput?.focus();
+  });
+}
+if (showCodeBtn && codeSection) {
+  showCodeBtn.addEventListener('click', () => {
+    const willShow = codeSection.style.display === 'none';
+    codeSection.style.display = willShow ? 'block' : 'none';
+    if (willShow) pairingCodeInput?.focus();
+  });
+}
 
 // Scanning another device's pairing QR opens this page with ?relay=&code=
 // attached, so prefill the form instead of making the user type the code.
@@ -192,7 +216,14 @@ function prefillFromQrScan() {
   const relay = params.get('relay');
   const code = params.get('code');
   if (relay) relayUrlInput.value = relay;
-  if (code) pairingCodeInput.value = code.toUpperCase();
+  if (code) {
+    pairingCodeInput.value = code.toUpperCase();
+    // Scanning a pairing QR means the code section is exactly what this
+    // visit is for — it can't stay collapsed behind the "Have a pairing
+    // code?" link the way it does for a cold landing-page visit.
+    const codeSection = document.getElementById('code-section');
+    if (codeSection) codeSection.style.display = 'block';
+  }
 
   // A friend's "Invite a friend" QR uses connectRelay/connectCode (not
   // relay/code) so it can never be confused with a device-pairing QR —
@@ -416,8 +447,8 @@ function renderConnections(connections) {
 
   friendsEmpty.style.display = accepted.length ? 'none' : 'block';
   friendsList.innerHTML = '';
-  // Rebuild the send-to options: keep "My other devices", add one per friend.
-  sendToSelect.innerHTML = '<option value="">My other devices</option>';
+  // Rebuild the send-to options: keep "My devices", add one per friend.
+  sendToSelect.innerHTML = '<option value="">My devices</option>';
   for (const conn of accepted) {
     const row = document.createElement('div');
     row.className = 'connection-row';

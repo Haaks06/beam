@@ -568,3 +568,25 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .device-row button.revoke:hover { background: rgba(255, 84, 112, 0.1); }
 #devices-empty { color: var(--muted); font-size: 12px; }
+
+/* -- landing screen: secondary paths (sign in, join with a code) are
+   collapsed behind these links so a first-time visitor sees one button,
+   not two forms' worth of fields ------------------------------------- */
+.start-links {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.start-links-sep { color: var(--line); font-size: 11px; }
+.toggle-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  width: auto;
+}
+.toggle-link:hover { background: none; color: var(--fg); }
