@@ -3,12 +3,16 @@ const http = require('node:http');
 const https = require('node:https');
 
 class RelayClient {
-  constructor({ relayUrl, token, onItem, onStatusChange }) {
+  constructor({ relayUrl, token, lastSeenId, onItem, onStatusChange, onLastSeenIdChange }) {
     this.relayUrl = relayUrl.replace(/\/+$/, '');
     this.token = token;
     this.onItem = onItem;
     this.onStatusChange = onStatusChange || (() => {});
-    this.lastSeenId = 0;
+    this.onLastSeenIdChange = onLastSeenIdChange || (() => {});
+    // Starting from a persisted id (rather than always 0) is what stops
+    // every relaunch from re-fetching and re-notifying about the entire
+    // history of items ever sent to this inbox.
+    this.lastSeenId = lastSeenId || 0;
     this.source = null;
   }
 
@@ -27,12 +31,19 @@ class RelayClient {
     const url = `${this.relayUrl}/events?token=${encodeURIComponent(this.token)}`;
     this.source = new EventSource(url);
 
-    this.source.onopen = () => this.onStatusChange('connected');
+    this.source.onopen = () => {
+      this.onStatusChange('connected');
+      // Fires on the initial connect AND every automatic reconnect after a
+      // drop. SSE has no delivery guarantee across a gap, so without this,
+      // anything sent while disconnected would be silently lost — you'd
+      // just see "connected" again with no sign anything was missed.
+      this.backfill();
+    };
     this.source.onerror = () => this.onStatusChange('disconnected');
     this.source.onmessage = (event) => {
       try {
         const item = JSON.parse(event.data);
-        this.lastSeenId = Math.max(this.lastSeenId, item.id);
+        this.advanceLastSeenId(item.id);
         this.onItem(item);
       } catch (err) {
         console.error('failed to parse SSE event', err);
@@ -40,11 +51,17 @@ class RelayClient {
     };
   }
 
+  advanceLastSeenId(id) {
+    if (id <= this.lastSeenId) return;
+    this.lastSeenId = id;
+    this.onLastSeenIdChange(id);
+  }
+
   async backfill() {
     try {
       const items = await this.request('GET', `/items?since=${this.lastSeenId}`);
       for (const item of items.items || []) {
-        this.lastSeenId = Math.max(this.lastSeenId, item.id);
+        this.advanceLastSeenId(item.id);
         this.onItem(item);
       }
     } catch (err) {

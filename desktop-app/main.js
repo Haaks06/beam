@@ -185,7 +185,9 @@ async function ensureOwnDevice() {
     throw new Error(`relay returned ${res.status}`);
   }
   const data = await res.json();
-  store.update({ relayUrl, token: data.token });
+  // A new inbox has no history yet — reset lastSeenId so a stale value left
+  // over from a previous (now-abandoned) inbox can't affect anything.
+  store.update({ relayUrl, token: data.token, lastSeenId: 0 });
   return true;
 }
 
@@ -194,6 +196,8 @@ function startRelayClient() {
   relayClient = new RelayClient({
     relayUrl: config.relayUrl,
     token: config.token,
+    lastSeenId: config.lastSeenId,
+    onLastSeenIdChange: (id) => store.update({ lastSeenId: id }),
     onStatusChange: setStatus,
     onItem: (item) => handleItem(item, config),
   });
@@ -406,7 +410,9 @@ function registerIpcHandlers() {
       if (!res.ok) {
         return { ok: false, error: data.error || `relay returned ${res.status}` };
       }
-      store.update({ relayUrl: DEFAULT_RELAY_URL, token: data.token, hasSeenWelcome: true });
+      // lastSeenId: 0 — this device has never seen this (possibly
+      // different) inbox before, so it should backfill its full history.
+      store.update({ relayUrl: DEFAULT_RELAY_URL, token: data.token, hasSeenWelcome: true, lastSeenId: 0 });
       relayClient?.stop();
       startRelayClient();
       return { ok: true };

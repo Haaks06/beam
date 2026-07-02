@@ -14,7 +14,11 @@ router.get('/', requireToken, (req, res) => {
 
   sse.subscribe(req.device.inbox_id, res);
 
-  const keepAlive = setInterval(() => res.write(': ping\n\n'), 25000);
+  // Shorter than before as a defensive margin against proxy/NAT idle
+  // timeouts (mobile carriers in particular can be aggressive) — cheap
+  // insurance against exactly the "keeps losing connection" symptom this
+  // is meant to prevent.
+  const keepAlive = setInterval(() => res.write(': ping\n\n'), 15000);
   req.on('close', () => clearInterval(keepAlive));
 });
 

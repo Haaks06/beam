@@ -333,6 +333,11 @@ function connectReceivedFeed() {
   const { relayUrl, token } = loadConfig();
   if (!relayUrl || !token) return;
   eventSource = new EventSource(`${relayUrl}/events?token=${encodeURIComponent(token)}`);
+  // Fires on the initial connect AND every automatic reconnect after a
+  // drop — SSE has no delivery guarantee across a gap, so without re-running
+  // the backlog fetch here, anything sent while disconnected would just be
+  // silently missing with no indication anything went wrong.
+  eventSource.onopen = () => loadBacklog();
   eventSource.onmessage = (event) => {
     const item = JSON.parse(event.data);
     renderItem(item, { prepend: true });
