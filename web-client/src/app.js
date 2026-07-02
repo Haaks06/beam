@@ -63,9 +63,15 @@ const statusEl = document.getElementById('status');
 const startSection = document.getElementById('start-section');
 const relayUrlInput = document.getElementById('relay-url');
 const pairingCodeInput = document.getElementById('pairing-code');
-const codeSection = document.getElementById('code-section');
-const showCodeBtn = document.getElementById('show-code-btn');
+const receiveSection = document.getElementById('receive-section');
+const intentGrid = document.getElementById('intent-grid');
+const intentSendBtn = document.getElementById('intent-send-btn');
+const intentReceiveBtn = document.getElementById('intent-receive-btn');
+const receiveBackBtn = document.getElementById('receive-back-btn');
+const showAdvancedBtn = document.getElementById('show-advanced-btn');
+const advancedSection = document.getElementById('advanced-section');
 const inviteSection = document.getElementById('invite-section');
+const inviteTitleEl = document.getElementById('invite-title');
 const inviteCodeEl = document.getElementById('invite-code');
 const inviteQrEl = document.getElementById('invite-qr');
 const inviteFrame = document.getElementById('invite-frame');
@@ -81,6 +87,10 @@ const connPillText = document.getElementById('conn-pill-text');
 let eventSource = null;
 let invitePollTimer = null;
 let countdownTimer = null;
+// Which intent card was tapped (or which side of the receive/scan flow this
+// device took) — used only to pick a sensible default tab once paired, so
+// "I wanted to send" doesn't land on an empty Receive tab first.
+let lastIntent = 'send';
 
 function setStatus(message, variant) {
   statusEl.textContent = message;
@@ -125,6 +135,9 @@ function enterStartState() {
   clearInterval(invitePollTimer);
   clearInterval(countdownTimer);
   if (connPill) connPill.style.display = 'none';
+  intentGrid.style.display = 'flex';
+  receiveSection.style.display = 'none';
+  advancedSection.style.display = 'none';
   showOnly('start');
 }
 
@@ -145,7 +158,7 @@ function formatRemaining(ms) {
 
 function enterActiveState() {
   showOnly('active');
-  activateTab('send');
+  activateTab(lastIntent);
   requestAnimationFrame(positionTabIndicator);
   connectReceivedFeed();
 
@@ -223,11 +236,11 @@ function refreshState() {
   return enterInviteState();
 }
 
-document.getElementById('start-btn').addEventListener('click', async () => {
+intentSendBtn.addEventListener('click', async () => {
+  lastIntent = 'send';
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
-  const startBtn = document.getElementById('start-btn');
-  startBtn.classList.add('sending');
-  startBtn.disabled = true;
+  intentSendBtn.classList.add('sending');
+  intentSendBtn.disabled = true;
   try {
     setStatus('Starting...');
     const res = await fetch(`${relayUrl}/inbox`, {
@@ -243,20 +256,34 @@ document.getElementById('start-btn').addEventListener('click', async () => {
   } catch (err) {
     setStatus(`Couldn't start: ${err.message}`, 'error');
   } finally {
-    startBtn.classList.remove('sending');
-    startBtn.disabled = false;
+    intentSendBtn.classList.remove('sending');
+    intentSendBtn.disabled = false;
   }
 });
 
-if (showCodeBtn && codeSection) {
-  showCodeBtn.addEventListener('click', () => {
-    const willShow = codeSection.style.display === 'none';
-    codeSection.style.display = willShow ? 'block' : 'none';
-    if (willShow) pairingCodeInput?.focus();
+// "Receive" doesn't need its own device-creation call — claiming a code
+// (below) mints this device's token in the same request as joining, so
+// tapping this just reveals the connect form instead of starting anything.
+intentReceiveBtn.addEventListener('click', () => {
+  lastIntent = 'receive';
+  intentGrid.style.display = 'none';
+  receiveSection.style.display = 'block';
+  pairingCodeInput?.focus();
+});
+receiveBackBtn.addEventListener('click', () => {
+  intentGrid.style.display = 'flex';
+  receiveSection.style.display = 'none';
+  advancedSection.style.display = 'none';
+});
+if (showAdvancedBtn && advancedSection) {
+  showAdvancedBtn.addEventListener('click', () => {
+    const willShow = advancedSection.style.display === 'none';
+    advancedSection.style.display = willShow ? 'block' : 'none';
   });
 }
 
 async function claimPairingCode(relayUrl, pairingCode) {
+  lastIntent = 'receive';
   const res = await fetch(`${relayUrl}/pair/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -302,7 +329,8 @@ async function claimFromQrScan() {
 
   relayUrlInput.value = relay;
   pairingCodeInput.value = code.toUpperCase();
-  codeSection.style.display = 'block';
+  intentGrid.style.display = 'none';
+  receiveSection.style.display = 'block';
   try {
     setStatus('Pairing...');
     await claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase());
@@ -481,19 +509,97 @@ document.getElementById('send-link-btn').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('send-photo-btn').addEventListener('click', async () => {
+// --- Photo drop zone: click to pick, drag-and-drop, or paste from the
+// clipboard — sending a photo is the primary action on this tab (see
+// index.html), so it gets the same affordances a real "airdrop"-style tool
+// would, not a bare <input type=file>. ---
+
+const photoDropZone = document.getElementById('photo-drop-zone');
+const photoFileInput = document.getElementById('photo-file');
+const dropZoneEmpty = document.getElementById('drop-zone-empty');
+const dropZonePreview = document.getElementById('drop-zone-preview');
+const photoPreviewImg = document.getElementById('photo-preview-img');
+const photoClearBtn = document.getElementById('photo-clear-btn');
+const sendPhotoBtn = document.getElementById('send-photo-btn');
+
+let selectedPhotoFile = null;
+let selectedPhotoPreviewUrl = null;
+
+function setSelectedPhoto(file) {
+  if (selectedPhotoPreviewUrl) {
+    URL.revokeObjectURL(selectedPhotoPreviewUrl);
+    selectedPhotoPreviewUrl = null;
+  }
+  selectedPhotoFile = file || null;
+  if (file) {
+    selectedPhotoPreviewUrl = URL.createObjectURL(file);
+    photoPreviewImg.src = selectedPhotoPreviewUrl;
+    dropZoneEmpty.style.display = 'none';
+    dropZonePreview.style.display = 'block';
+  } else {
+    dropZoneEmpty.style.display = 'flex';
+    dropZonePreview.style.display = 'none';
+  }
+  sendPhotoBtn.disabled = !file;
+}
+
+photoDropZone.addEventListener('click', () => {
+  if (!selectedPhotoFile) photoFileInput.click();
+});
+photoDropZone.addEventListener('keydown', (event) => {
+  if ((event.key === 'Enter' || event.key === ' ') && !selectedPhotoFile) {
+    event.preventDefault();
+    photoFileInput.click();
+  }
+});
+photoFileInput.addEventListener('change', () => setSelectedPhoto(photoFileInput.files[0]));
+photoClearBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setSelectedPhoto(null);
+  photoFileInput.value = '';
+});
+
+for (const evt of ['dragenter', 'dragover']) {
+  photoDropZone.addEventListener(evt, (event) => {
+    event.preventDefault();
+    photoDropZone.classList.add('drag-active');
+  });
+}
+for (const evt of ['dragleave', 'drop']) {
+  photoDropZone.addEventListener(evt, (event) => {
+    event.preventDefault();
+    photoDropZone.classList.remove('drag-active');
+  });
+}
+photoDropZone.addEventListener('drop', (event) => {
+  const file = event.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith('image/')) setSelectedPhoto(file);
+});
+
+// Paste-to-send only fires while the Send tab is actually the one showing —
+// otherwise pasting an image while reading the Receive tab would silently
+// load it into a hidden form the user never asked for.
+document.addEventListener('paste', (event) => {
+  if (document.getElementById('tab-send').style.display === 'none') return;
+  const items = event.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      setSelectedPhoto(item.getAsFile());
+      break;
+    }
+  }
+});
+
+sendPhotoBtn.addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();
-  const fileInput = document.getElementById('photo-file');
-  const file = fileInput.files[0];
   if (!token) return setStatus('Pair this device first.', 'error');
-  if (!file) return setStatus('Choose a photo to send.', 'error');
-  const btn = document.getElementById('send-photo-btn');
-  btn.classList.add('sending');
-  btn.disabled = true;
+  if (!selectedPhotoFile) return setStatus('Choose a photo to send.', 'error');
+  sendPhotoBtn.classList.add('sending');
+  sendPhotoBtn.disabled = true;
   try {
     setStatus('Sending photo...');
     const fd = new FormData();
-    fd.append('file', file);
+    fd.append('file', selectedPhotoFile);
     const res = await fetch(`${relayUrl}/items/photo`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -502,14 +608,25 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
     if (res.status === 401) return enterEndedState();
     if (!res.ok) throw new Error((await res.json()).error || 'send failed');
     setStatus('Photo beamed!', 'success');
-    fileInput.value = '';
+    setSelectedPhoto(null);
+    photoFileInput.value = '';
   } catch (err) {
     setStatus(`Failed to send photo: ${err.message}`, 'error');
   } finally {
-    btn.classList.remove('sending');
-    btn.disabled = false;
+    sendPhotoBtn.classList.remove('sending');
+    sendPhotoBtn.disabled = !selectedPhotoFile;
   }
 });
+
+const showTextBtn = document.getElementById('show-text-btn');
+const textSection = document.getElementById('text-section');
+if (showTextBtn && textSection) {
+  showTextBtn.addEventListener('click', () => {
+    const willShow = textSection.style.display === 'none';
+    textSection.style.display = willShow ? 'block' : 'none';
+    if (willShow) document.getElementById('link-url')?.focus();
+  });
+}
 
 const shareStatus = new URLSearchParams(window.location.search).get('shared');
 if (shareStatus === 'ok') setStatus('Shared!', 'success');

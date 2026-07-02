@@ -1,10 +1,15 @@
 const path = require('node:path');
-const { app, BrowserWindow, Notification, ipcMain } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
 // but the product Electron reports to Windows should be the real product name.
 app.setName('Beam');
+
+// Electron shows a default File/Edit/View/Window/Help menu bar unless told
+// not to — there's nothing in that menu this app uses (no File > Open, no
+// Edit > Undo), and it doesn't match the frameless, themed rest of the app.
+Menu.setApplicationMenu(null);
 
 const { saveLink, savePhoto } = require('./saveHandlers');
 const { createTray } = require('./tray');
@@ -41,12 +46,18 @@ function createMainWindow() {
     title: 'Beam',
     icon: ICON_PATH,
     show: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#050308',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+  // Belt and suspenders alongside the global Menu.setApplicationMenu(null)
+  // above — this is what actually removes the bar rather than just
+  // collapsing it behind Alt.
+  mainWindow.setMenuBarVisibility(false);
   // This is the literal same page a phone gets when it visits the relay —
   // same origin as the API, same HTML/JS, no separate Electron-only UI to
   // keep in sync with it.

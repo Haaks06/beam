@@ -474,3 +474,47 @@ button.link:hover { color: var(--fg); background: none; }
   width: auto;
 }
 .toggle-link:hover { background: none; color: var(--fg); }
+
+/* -- intent cards: "Send" / "Receive" is the very first decision, matching
+   how AirDrop/Nearby Share/Snapdrop frame the same choice, instead of one
+   generic "Start" button that hides what's about to happen ------------- */
+.intent-grid { display: flex; gap: 12px; margin: 6px 0 4px; }
+.intent-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 10px 20px;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s var(--ease-out-expo);
+}
+.intent-card:hover { border-color: var(--violet-500); background: var(--surface-hover); transform: translateY(-2px); }
+.intent-card:active { transform: scale(0.98); }
+.intent-card svg { width: 28px; height: 28px; color: var(--violet-400); flex-shrink: 0; }
+.intent-card .intent-label { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+.intent-card .intent-sub { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.4; }
+.hint-text { font-size: 12px; color: var(--muted); text-align: center; margin: 0 0 14px; line-height: 1.5; }
+
+/* -- photo drop zone: click, drag-and-drop, or paste ------------------- */
+.drop-zone {
+  position: relative;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius-md);
+  padding: 26px 14px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.drop-zone:hover, .drop-zone.drag-active { border-color: var(--violet-500); background: rgba(114, 56, 245, 0.06); }
+.drop-zone:focus-visible { outline: 2px solid var(--violet-400); outline-offset: 2px; }
+#drop-zone-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#drop-zone-empty svg { width: 28px; height: 28px; color: var(--muted); }
+#drop-zone-empty p { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; max-width: 220px; }
+#drop-zone-preview img { max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); display: block; margin: 0 auto 8px; }

@@ -20,33 +20,44 @@
       <button id="install-btn">Install</button>
     </div>
   </header>
-  <p class="tagline">Pair your phone and PC, then send or receive for 2 minutes.</p>
+  <p class="tagline">Connect two devices for 2 minutes, share a photo or link, done — nothing is saved.</p>
 
   <section id="start-section">
-    <p class="section-title">Get started</p>
-    <button id="start-btn" class="primary">Start Beaming on this device</button>
-
-    <div class="start-links">
-      <button type="button" id="show-code-btn" class="toggle-link">Have a pairing code?</button>
+    <div class="intent-grid" id="intent-grid">
+      <button id="intent-send-btn" class="intent-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7Z"></path></svg>
+        <span class="intent-label">Send</span>
+        <span class="intent-sub">Share a photo or link from this device</span>
+      </button>
+      <button id="intent-receive-btn" class="intent-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M4 19h16"></path></svg>
+        <span class="intent-label">Receive</span>
+        <span class="intent-sub">Get something from another device</span>
+      </button>
     </div>
 
-    <div id="code-section" style="display:none">
-      <div class="divider">Pair with a device that's already Beaming</div>
-      <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
-      <label>Pairing code (shown on the other device)<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
-      <button id="pair-btn">Pair</button>
+    <div id="receive-section" style="display:none">
+      <div class="divider">Connect to the sending device</div>
+      <p class="hint-text">Scan the QR code shown there, or type its code below.</p>
+      <label>Pairing code<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
+      <button id="pair-btn" class="primary">Connect</button>
+      <button type="button" id="receive-back-btn" class="link">← Back</button>
+      <button type="button" id="show-advanced-btn" class="toggle-link">Using a different relay?</button>
+      <div id="advanced-section" style="display:none">
+        <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
+      </div>
     </div>
   </section>
 
   <section id="invite-section" style="display:none">
-    <p class="section-title">Enter this code on your other device</p>
+    <p class="section-title" id="invite-title">Show this to the other device</p>
     <div class="scan-frame" id="invite-frame">
       <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
       <span class="scanline"></span>
       <img class="qr" id="invite-qr" alt="Pairing QR code" />
     </div>
     <div id="invite-code"></div>
-    <p class="waiting-text">Waiting for your other device to scan or enter this code…</p>
+    <p class="waiting-text">Waiting for it to scan or enter this code…</p>
     <button id="invite-cancel-btn" class="link">Cancel</button>
   </section>
 
@@ -64,10 +75,24 @@
 
     <div class="tab-panel" id="tab-send">
       <section id="share-section">
-        <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
-        <button id="send-link-btn" class="primary">Send</button>
-        <label>Photo<input id="photo-file" type="file" accept="image/*" /></label>
-        <button id="send-photo-btn" class="primary">Send photo</button>
+        <div class="drop-zone" id="photo-drop-zone" tabindex="0" role="button" aria-label="Choose or drop a photo to send">
+          <input id="photo-file" type="file" accept="image/*" hidden />
+          <div id="drop-zone-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="m21 15-5-5L5 20"></path></svg>
+            <p>Drop a photo, click to choose, or paste from clipboard</p>
+          </div>
+          <div id="drop-zone-preview" style="display:none">
+            <img id="photo-preview-img" alt="Selected photo" />
+            <button type="button" id="photo-clear-btn" class="link">Remove</button>
+          </div>
+        </div>
+        <button id="send-photo-btn" class="primary" disabled>Send photo</button>
+
+        <button type="button" id="show-text-btn" class="toggle-link">Or send a link/text instead</button>
+        <div id="text-section" style="display:none">
+          <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
+          <button id="send-link-btn" class="primary">Send</button>
+        </div>
       </section>
     </div>
 
