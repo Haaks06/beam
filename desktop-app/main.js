@@ -199,7 +199,7 @@ function startRelayClient() {
     lastSeenId: config.lastSeenId,
     onLastSeenIdChange: (id) => store.update({ lastSeenId: id }),
     onStatusChange: setStatus,
-    onItem: (item) => handleItem(item, config),
+    onItem: (item, meta) => handleItem(item, config, meta),
   });
   relayClient.start();
 }
@@ -210,19 +210,29 @@ function pushRecentItem(entry) {
   hubWindow?.webContents.send('items-updated', recentItems);
 }
 
-async function handleItem(item, config) {
+// isBacklog distinguishes a live, just-happened item from a catch-up batch
+// (on launch, on reconnect, on first joining an inbox — potentially many
+// items at once). Only a live item should interrupt you; replaying a whole
+// backlog as individual clipboard-overwrites + notification popups was
+// exactly the "every single message" spam this fixes. Backlog items still
+// get saved and still show up in the Hub's recent list, just quietly.
+async function handleItem(item, config, { isBacklog = false } = {}) {
   try {
     if (item.type === 'link') {
       saveLink(item);
-      // The whole point of "beaming" a link over is to use it right away —
-      // copy it straight to the clipboard so it's a paste away, no need to
-      // dig through a notification or a file.
-      clipboard.writeText(item.content);
-      notify('Link copied to clipboard', item.content);
+      if (!isBacklog) {
+        // The whole point of "beaming" a link over is to use it right away —
+        // copy it straight to the clipboard so it's a paste away, no need to
+        // dig through a notification or a file.
+        clipboard.writeText(item.content);
+        notify('Link copied to clipboard', item.content);
+      }
       pushRecentItem({ id: item.id, type: 'link', content: item.content, createdAt: item.createdAt });
     } else if (item.type === 'photo') {
       const savedPath = await savePhoto(item, config.relayUrl, config.token);
-      notify('Photo received', savedPath);
+      if (!isBacklog) {
+        notify('Photo received', savedPath);
+      }
       pushRecentItem({ id: item.id, type: 'photo', filePath: savedPath, fileName: path.basename(savedPath), createdAt: item.createdAt });
     }
   } catch (err) {

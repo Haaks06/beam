@@ -44,7 +44,9 @@ class RelayClient {
       try {
         const item = JSON.parse(event.data);
         this.advanceLastSeenId(item.id);
-        this.onItem(item);
+        // Live delivery, not a catch-up batch — this is the one case that
+        // should interrupt you (clipboard copy + notification).
+        this.onItem(item, { isBacklog: false });
       } catch (err) {
         console.error('failed to parse SSE event', err);
       }
@@ -62,7 +64,10 @@ class RelayClient {
       const items = await this.request('GET', `/items?since=${this.lastSeenId}`);
       for (const item of items.items || []) {
         this.advanceLastSeenId(item.id);
-        this.onItem(item);
+        // Catch-up items (on launch, on reconnect, on first joining an
+        // inbox) — could be a whole batch at once, so these must NOT each
+        // trigger their own clipboard overwrite + notification popup.
+        this.onItem(item, { isBacklog: true });
       }
     } catch (err) {
       console.error('backfill failed', err);
