@@ -1,8 +1,9 @@
-# App name is assigned when the app is created via `fly launch`/`fly apps
-# create` (must be globally unique on Fly.io) — update this to match once
-# created, per docs/HOSTING.md.
-app = "beam-relay"
-primary_region = "iad"
+# Matches the app Fly's dashboard "Deploy from GitHub" auto-created
+# (beam-wckn2w.fly.dev). Region matches where its persistent volume
+# (beam_data) already lives — volumes are region-locked, so this must stay
+# "ams" unless the volume is recreated elsewhere.
+app = "beam-wckn2w"
+primary_region = "ams"
 
 [build]
 

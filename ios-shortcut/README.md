@@ -23,7 +23,7 @@ paired device:
 
 1. Open **Shortcuts** → **+** → name it `Get Beam Token`.
 2. Add action **Ask for Input** → Input Type: Text → Prompt: "Relay URL",
-   Default Answer: `https://share-to-pc-relay.onrender.com`.
+   Default Answer: `https://beam-wckn2w.fly.dev`.
 3. Add action **Ask for Input** → Input Type: Text → Prompt: "Pairing code".
 4. Add action **Get Contents of URL**:
    - URL: combine `Relay URL` (step 2) + `/pair/claim`, e.g. via the
@@ -48,12 +48,12 @@ paired device:
    **Images**, so this one shortcut shows up no matter what you're sharing.
 3. Add action **If** → Input: `Shortcut Input` → Condition: **Is Image**.
 4. **If branch (photo)** — add action **Get Contents of URL**:
-   - URL: `https://share-to-pc-relay.onrender.com/items/photo`
+   - URL: `https://beam-wckn2w.fly.dev/items/photo`
    - Method: POST
    - Headers: `Authorization: Bearer <your-token-from-step-0>`
    - Request Body: **Form** → field named `file`, value = `Shortcut Input`.
 5. **Otherwise branch (link)** — add action **Get Contents of URL**:
-   - URL: `https://share-to-pc-relay.onrender.com/items/link`
+   - URL: `https://beam-wckn2w.fly.dev/items/link`
    - Method: POST
    - Headers: `Authorization: Bearer <your-token-from-step-0>`,
      `Content-Type: application/json`

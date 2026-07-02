@@ -15,6 +15,7 @@
       --line: #202020;
       --success: #6bcf9a;
       --error: #e17a7a;
+      --accent: #2563eb;
     }
     * { box-sizing: border-box; }
     body {
@@ -30,6 +31,16 @@
       font-weight: 700;
       letter-spacing: 0.02em;
       margin: 0 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #install-btn {
+      display: none;
+      width: auto;
+      margin: 0;
+      padding: 5px 10px;
+      font-size: 11px;
     }
     section { margin-bottom: 28px; }
     .section-title {
@@ -67,19 +78,39 @@
     }
     button:hover { border-color: var(--fg); }
     button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { opacity: 0.9; }
+    button.link {
+      border: none;
+      width: auto;
+      padding: 0;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 12px;
+    }
+    button.link:hover { color: var(--fg); }
+    .divider {
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+      margin: 20px 0;
+      gap: 10px;
+    }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
     #status { min-height: 20px; color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; }
     #status.success { color: var(--success); }
     #status.error { color: var(--error); }
 
     /* "Swept away" once paired — collapses rather than just hiding, so the
        transition itself communicates "you're set up now." */
-    #pair-section {
+    #start-section {
       overflow: hidden;
-      max-height: 400px;
+      max-height: 500px;
       opacity: 1;
       transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease;
     }
-    #pair-section.collapsed {
+    #start-section.collapsed {
       max-height: 0;
       opacity: 0;
       margin-bottom: 0;
@@ -95,25 +126,67 @@
       cursor: pointer;
     }
     #repair-link:hover { color: var(--fg); }
+
+    /* Invite overlay: shown while waiting for a second device to type the code in. */
+    #invite-section { display: none; text-align: center; }
+    #invite-code {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      margin: 14px 0;
+    }
+    #invite-qr { width: 160px; height: 160px; margin: 0 auto; display: block; }
+
+    #received-list { display: flex; flex-direction: column; gap: 10px; }
+    #received-empty { color: var(--muted); font-size: 12px; }
+    .item-row {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    .item-row .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .item-row a { color: var(--fg); word-break: break-all; }
+    .item-row img { max-width: 100%; display: block; margin-top: 8px; border: 1px solid var(--line); }
+    .item-row .download { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--muted); }
   </style>
 </head>
 <body>
-  <h1>Beam</h1>
+  <h1>Beam <button id="install-btn">Install</button></h1>
 
-  <section id="pair-section">
-    <p class="section-title">Pair this device</p>
+  <section id="start-section">
+    <p class="section-title">Get started</p>
+    <button id="start-btn" class="primary">Start Beaming on this device</button>
+    <div class="divider">or join a device that's already Beaming</div>
     <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
-    <label>Pairing code (shown on your PC)<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
+    <label>Pairing code (shown on the other device)<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
     <button id="pair-btn">Pair</button>
   </section>
 
-  <div id="paired-banner">Paired with your computer</div>
-  <section id="share-section">
-    <p class="section-title">Send to your PC</p>
+  <section id="invite-section">
+    <p class="section-title">Enter this code on the other device</p>
+    <div id="invite-code"></div>
+    <img id="invite-qr" alt="Pairing QR code" />
+    <button id="invite-cancel-btn" class="link">Cancel</button>
+  </section>
+
+  <div id="paired-banner">Paired</div>
+
+  <section id="paired-actions" style="display:none">
+    <button id="invite-btn">Invite another device</button>
+  </section>
+
+  <section id="share-section" style="display:none">
+    <p class="section-title">Send</p>
     <label>Link<input id="link-url" placeholder="https://example.com" /></label>
     <button id="send-link-btn">Send link</button>
     <label>Photo<input id="photo-file" type="file" accept="image/*" /></label>
     <button id="send-photo-btn">Send photo</button>
+  </section>
+
+  <section id="received-section" style="display:none">
+    <p class="section-title">Received</p>
+    <div id="received-empty">Nothing yet — items sent from any paired device show up here live.</div>
+    <div id="received-list"></div>
   </section>
 
   <div id="status"></div>
