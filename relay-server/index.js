@@ -12,9 +12,7 @@ const inboxRoutes = require('./routes/inbox');
 const pairRoutes = require('./routes/pair');
 const itemRoutes = require('./routes/items');
 const streamRoutes = require('./routes/stream');
-const { initRouter: connectInitRoutes, connectionsRouter } = require('./routes/connections');
-const adminRoutes = require('./routes/admin');
-const authRoutes = require('./routes/auth');
+const { startSessionCleanup } = require('./lib/sessionCleanup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,27 +56,6 @@ app.use('/items', itemLimiter, itemRoutes);
 
 app.use('/events', streamRoutes);
 
-// A connection request is accept-gated (never grants access on its own —
-// see routes/connections.js), but repeated requests are still spam/
-// harassment surface against a specific person, so both the code-based
-// entry points and the accept/reject actions share this limiter.
-const connectLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: Number(process.env.CONNECT_LIMIT_PER_MINUTE) || 20,
-});
-app.use('/connect', connectLimiter, connectInitRoutes);
-app.use('/connections', connectLimiter, connectionsRouter);
-
-// routes/admin.js applies its own much-stricter limiter directly to
-// /admin/login (a single static credential against online brute force
-// needs a tighter limit than the read-only routes on this same prefix).
-app.use('/admin', adminRoutes);
-
-// routes/auth.js applies its own signup/login limiters directly, since the
-// two endpoints need different limits (mass-account-creation vs
-// brute-force concerns).
-app.use('/auth', authRoutes);
-
 // Exposes the deployed version so the web client can show it and so anyone
 // checking "is my deploy actually live" has a real answer instead of guessing.
 app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
@@ -89,7 +66,7 @@ app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
 const webClientDist = path.join(__dirname, '..', 'web-client', 'dist');
 if (fs.existsSync(webClientDist)) {
   app.use(express.static(webClientDist));
-  app.get(/^(?!\/(inbox|pair|items|events|health|connect|connections|admin|auth)).*/, (req, res) => {
+  app.get(/^(?!\/(inbox|pair|items|events|health)).*/, (req, res) => {
     res.sendFile(path.join(webClientDist, 'index.html'));
   });
 }
@@ -105,6 +82,11 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`relay-server listening on http://localhost:${PORT}`);
   });
+  // Not started when this module is merely require()'d (e.g. by the test
+  // suite) — tests drive lib/sessionCleanup's sweep() directly instead of
+  // waiting on a real timer, and every test file requiring this module
+  // would otherwise leave its own interval running.
+  startSessionCleanup();
 }
 
 module.exports = app;

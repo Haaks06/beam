@@ -9,10 +9,6 @@
     "start": "electron .",
     "build": "electron-builder"
   },
-  "dependencies": {
-    "eventsource": "^2.0.2",
-    "qrcode": "^1.5.4"
-  },
   "devDependencies": {
     "electron": "32.3.3",
     "electron-builder": "^25.0.0"

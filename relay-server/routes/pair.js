@@ -9,6 +9,9 @@ const router = express.Router();
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
 const CODE_LENGTH = 6;
 const CODE_TTL_MS = 10 * 60 * 1000;
+// A pairing only ever runs for 2 minutes once both devices are present —
+// see lib/sessionCleanup.js, which deletes everything once expires_at passes.
+const SESSION_DURATION_MS = 2 * 60 * 1000;
 
 function generateCode() {
   let code = '';
@@ -30,12 +33,18 @@ const claimPairing = db.prepare(
 const insertDevice = db.prepare(
   `INSERT INTO devices (inbox_id, token, label, created_at) VALUES (?, ?, ?, ?)`
 );
+const countDevices = db.prepare('SELECT COUNT(*) AS count FROM devices WHERE inbox_id = ?');
+const markPaired = db.prepare('UPDATE inboxes SET paired_at = ?, expires_at = ? WHERE id = ?');
+const getInbox = db.prepare('SELECT * FROM inboxes WHERE id = ?');
 
-// POST /pair/init — adds ANOTHER device to the caller's own inbox (the
-// caller must already hold a token, e.g. the desktop app or an existing
-// phone). The generated code is scoped to req.device.inbox_id, so whoever
-// claims it joins that same inbox, never a different one.
+// POST /pair/init — generates a code that adds the SECOND (and only the
+// second) device to the caller's inbox. A pairing is exactly two devices,
+// so this refuses to mint a code once that slot is already filled.
 router.post('/init', requireToken, async (req, res) => {
+  if (countDevices.get(req.device.inbox_id).count >= 2) {
+    return res.status(409).json({ error: 'this pairing is already full' });
+  }
+
   const now = Date.now();
   let code;
   // Extremely unlikely to collide, but guard anyway.
@@ -58,6 +67,7 @@ router.post('/init', requireToken, async (req, res) => {
 // POST /pair/claim { pairingCode, label } — exchanges a short-lived code for
 // a long-lived device token scoped to whichever inbox minted the code.
 // Unauthenticated by necessity: the claiming device doesn't have a token yet.
+// Claiming the second device is what starts the 2-minute session clock.
 router.post('/claim', (req, res) => {
   const { pairingCode, label } = req.body || {};
   if (!pairingCode || typeof pairingCode !== 'string') {
@@ -74,22 +84,41 @@ router.post('/claim', (req, res) => {
   if (Date.now() > pairing.expires_at) {
     return res.status(410).json({ error: 'pairing code expired' });
   }
+  // Re-checked here (not just in /init) to close the race where two
+  // devices claim near-simultaneously and both would otherwise squeeze in.
+  if (countDevices.get(pairing.inbox_id).count >= 2) {
+    return res.status(409).json({ error: 'this pairing is already full' });
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
-  insertDevice.run(pairing.inbox_id, token, label || 'Unnamed device', Date.now());
+  const now = Date.now();
+  insertDevice.run(pairing.inbox_id, token, label || 'Unnamed device', now);
   claimPairing.run(token, pairing.id);
 
-  res.json({ token });
+  let expiresAt = null;
+  if (countDevices.get(pairing.inbox_id).count >= 2) {
+    expiresAt = now + SESSION_DURATION_MS;
+    markPaired.run(now, expiresAt, pairing.inbox_id);
+  }
+
+  res.json({ token, expiresAt });
 });
 
 // GET /pair/status/:code — lets the initiating device (usually the desktop
-// app) know once some client has claimed the code, without exposing the token.
+// app) know once some client has claimed the code, without exposing the
+// token. Also surfaces expiresAt once claimed, since the initiating device
+// never calls /pair/claim itself and needs its own countdown start time.
 router.get('/status/:code', (req, res) => {
   const pairing = getPairing.get(req.params.code.toUpperCase());
   if (!pairing) {
     return res.status(404).json({ error: 'unknown pairing code' });
   }
-  res.json({ status: pairing.status });
+  let expiresAt = null;
+  if (pairing.status === 'claimed') {
+    const inbox = getInbox.get(pairing.inbox_id);
+    expiresAt = inbox ? inbox.expires_at : null;
+  }
+  res.json({ status: pairing.status, expiresAt });
 });
 
 module.exports = router;

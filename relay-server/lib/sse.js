@@ -27,4 +27,18 @@ function broadcast(inboxId, event) {
   }
 }
 
-module.exports = { subscribe, broadcast };
+// Called by lib/sessionCleanup.js right before it deletes an expired
+// inbox's rows — tells any live SSE clients the session is over (rather
+// than letting their connection just go quiet), then closes the response
+// so the browser's EventSource stops retrying against a now-gone inbox.
+function expireInbox(inboxId) {
+  const set = subscribers.get(inboxId);
+  if (!set) return;
+  for (const res of set) {
+    res.write('event: session-expired\ndata: {}\n\n');
+    res.end();
+  }
+  subscribers.delete(inboxId);
+}
+
+module.exports = { subscribe, broadcast, expireInbox };

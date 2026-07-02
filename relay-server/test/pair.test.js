@@ -80,6 +80,43 @@ test('status reflects claimed state', async () => {
   assert.equal(after.body.status, 'claimed');
 });
 
+test('claiming the second device stamps the inbox with a 2-minute expiry', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+
+  const before = Date.now();
+  const claimRes = await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
+    .expect(200);
+  assert.ok(claimRes.body.expiresAt);
+  assert.ok(claimRes.body.expiresAt >= before + 2 * 60 * 1000);
+  assert.ok(claimRes.body.expiresAt <= Date.now() + 2 * 60 * 1000 + 1000);
+
+  const statusRes = await request(app).get(`/pair/status/${initRes.body.pairingCode}`).expect(200);
+  assert.equal(statusRes.body.expiresAt, claimRes.body.expiresAt);
+});
+
+test('a pairing already at two devices refuses to mint another code', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+  await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
+    .expect(200);
+
+  await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(409);
+});
+
 test('a code minted by one inbox cannot leak a device into a different inbox', async () => {
   const ownerA = await createInboxToken('owner A');
   const ownerB = await createInboxToken('owner B');
