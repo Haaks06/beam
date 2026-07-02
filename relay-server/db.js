@@ -54,7 +54,24 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_items_inbox_id ON items(inbox_id);
   CREATE INDEX IF NOT EXISTS idx_devices_inbox_id ON devices(inbox_id);
-  CREATE INDEX IF NOT EXISTS idx_inboxes_expires_at ON inboxes(expires_at);
 `);
+
+// CREATE TABLE IF NOT EXISTS above is a no-op against a database that
+// already has an `inboxes` table from before this ephemeral-pairing model
+// existed — it does NOT add new columns to an existing table. Without this,
+// every query touching paired_at/expires_at (routes/pair.js,
+// lib/sessionCleanup.js, and the index below) would fail with "no such
+// column" the moment this deployed against the real production database.
+// Must run before the index below is created — an index on a column that
+// doesn't exist yet fails the same "no such column" way.
+const inboxColumns = db.prepare('PRAGMA table_info(inboxes)').all();
+if (!inboxColumns.some((c) => c.name === 'paired_at')) {
+  db.exec('ALTER TABLE inboxes ADD COLUMN paired_at INTEGER');
+}
+if (!inboxColumns.some((c) => c.name === 'expires_at')) {
+  db.exec('ALTER TABLE inboxes ADD COLUMN expires_at INTEGER');
+}
+
+db.exec('CREATE INDEX IF NOT EXISTS idx_inboxes_expires_at ON inboxes(expires_at)');
 
 module.exports = db;

@@ -1,7 +1,7 @@
 {
   "name": "share-to-pc",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.6.0",
   "description": "Share links and photos from any device to your PC",
   "workspaces": [
     "relay-server",
