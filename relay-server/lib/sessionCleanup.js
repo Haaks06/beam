@@ -18,21 +18,30 @@ const getAbandonedInboxes = db.prepare(
   'SELECT id FROM inboxes WHERE paired_at IS NULL AND created_at <= ?'
 );
 const getFilePaths = db.prepare(
-  "SELECT file_path FROM items WHERE inbox_id = ? AND file_path IS NOT NULL"
+  "SELECT file_path FROM items WHERE (inbox_id = ? OR from_inbox_id = ?) AND file_path IS NOT NULL"
 );
-const deleteItems = db.prepare('DELETE FROM items WHERE inbox_id = ?');
+// items.from_inbox_id is a leftover from the old friend-sharing model
+// (who actually sent it, vs inbox_id which is who could see it) — the new
+// items.js never writes it, but old rows from before this deploy still
+// carry it, and it's still a REFERENCES inboxes(id) column node:sqlite
+// enforces by default. An inbox that ever sent something to a different
+// inbox (any friend-shared item) would leave that reference dangling and
+// fail to delete otherwise — a second real instance of the exact FK bug
+// that took the sweep down, missed the first time because the seeded
+// migration test only covered an item where the two columns matched.
+const deleteItems = db.prepare('DELETE FROM items WHERE inbox_id = ? OR from_inbox_id = ?');
 const deleteDevices = db.prepare('DELETE FROM devices WHERE inbox_id = ?');
 const deletePairingRequests = db.prepare('DELETE FROM pairing_requests WHERE inbox_id = ?');
 const deleteInbox = db.prepare('DELETE FROM inboxes WHERE id = ?');
 
 function destroyInbox(inboxId) {
   sse.expireInbox(inboxId);
-  for (const row of getFilePaths.all(inboxId)) {
+  for (const row of getFilePaths.all(inboxId, inboxId)) {
     fs.unlink(path.join(UPLOAD_DIR, row.file_path), () => {
       // Best-effort — an already-missing file is not an error here.
     });
   }
-  deleteItems.run(inboxId);
+  deleteItems.run(inboxId, inboxId);
   deleteDevices.run(inboxId);
   deletePairingRequests.run(inboxId);
   deleteInbox.run(inboxId);

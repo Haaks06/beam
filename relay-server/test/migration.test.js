@@ -94,6 +94,16 @@ seed.prepare(
 seed.prepare(
   "INSERT INTO accounts (id, username, password_hash, display_name, inbox_id, created_at) VALUES (1, 'olduser', 'salt:hash', 'frenzy horse', 1, 1000)"
 ).run();
+// A second inbox representing a friend inbox 1 once shared items with —
+// the item's recipient (inbox_id) is the friend, but from_inbox_id still
+// points back at inbox 1. deleteItems only ever matched on inbox_id, so
+// this row survives inbox 1's own cleanup untouched and keeps a dangling
+// REFERENCES inboxes(id) pointed at a row that's about to be deleted —
+// the second real way the old friend-sharing data crashes the sweep.
+seed.prepare('INSERT INTO inboxes (id, created_at) VALUES (2, 1000)').run();
+seed.prepare(
+  "INSERT INTO items (id, inbox_id, type, content, source_label, created_at, from_inbox_id) VALUES (2, 2, 'link', 'https://example.com/shared-with-friend', 'PC', 1000, 1)"
+).run();
 seed.close();
 
 process.env.DB_PATH = dbPath;
@@ -157,25 +167,35 @@ test('existing /items and /pair routes work unmodified against a migrated databa
   assert.ok(init.body.pairingCode);
 });
 
-// This is the actual production incident, reproduced: node:sqlite enforces
-// `PRAGMA foreign_keys = ON` by default, and the old accounts table still
-// declared `REFERENCES inboxes(id)`. The very first background sweep
-// after deploying the ephemeral-pairing model tried to delete an old,
-// long-abandoned inbox that an `accounts` row still pointed at — the
-// DELETE failed with "FOREIGN KEY constraint failed" and crashed the
-// entire process, every 5 seconds, until Fly's max restart count was hit
-// and the app stayed down. Confirms the fix (dropping the legacy tables)
-// actually prevents this, not just in theory. Deliberately LAST: it
-// deletes the shared fixture inbox that every test above depends on.
-test('sweeping an old inbox that a leftover accounts row still references does not crash', () => {
+// This is the actual production incident, reproduced twice over — both are
+// real ways the old friend-sharing/accounts data crashed the sweep with
+// "FOREIGN KEY constraint failed" (node:sqlite enforces
+// PRAGMA foreign_keys = ON by default) once this deployed:
+//
+// 1. A leftover `accounts` row still pointing at an old inbox via
+//    REFERENCES inboxes(id) — fixed by dropping that table entirely.
+// 2. An `items` row shared with a friend, where the item's recipient
+//    (inbox_id) is a DIFFERENT inbox than the one that sent it
+//    (from_inbox_id) — deleteItems only ever matched on inbox_id, so this
+//    row survived its origin inbox's own cleanup and kept a dangling
+//    reference back to it. Fixed by matching on either column.
+//
+// Both crashed the entire process every 5 seconds until Fly hit its max
+// restart count and the app stayed down. Deliberately LAST: it deletes
+// the shared fixture inboxes every test above depends on.
+test('sweeping old inboxes with leftover accounts and cross-inbox friend-shared items does not crash', () => {
   delete require.cache[require.resolve('../db')];
   delete require.cache[require.resolve('../lib/sessionCleanup')];
   const db = require('../db');
   const { sweep } = require('../lib/sessionCleanup');
 
   // Old enough to be swept as abandoned (paired_at IS NULL).
-  db.prepare('UPDATE inboxes SET created_at = ? WHERE id = 1').run(Date.now() - 11 * 60 * 1000);
+  db.prepare('UPDATE inboxes SET created_at = ? WHERE id IN (1, 2)').run(Date.now() - 11 * 60 * 1000);
 
   assert.doesNotThrow(() => sweep());
   assert.equal(db.prepare('SELECT * FROM inboxes WHERE id = 1').get(), undefined);
+  assert.equal(db.prepare('SELECT * FROM inboxes WHERE id = 2').get(), undefined);
+  // The friend-shared item (recipient inbox 2, sender inbox 1) is gone
+  // too — it can't be left behind still pointing at a deleted inbox.
+  assert.equal(db.prepare('SELECT * FROM items WHERE id = 2').get(), undefined);
 });

@@ -74,6 +74,18 @@ if (!inboxColumns.some((c) => c.name === 'expires_at')) {
 
 db.exec('CREATE INDEX IF NOT EXISTS idx_inboxes_expires_at ON inboxes(expires_at)');
 
+// items.from_inbox_id isn't in the CREATE TABLE above (the new items.js
+// never writes it — there's no more cross-inbox friend sharing to track
+// the original sender for), but it must still exist as a real column: old
+// rows from before this deploy carry it, it's still a
+// REFERENCES inboxes(id) column, and lib/sessionCleanup.js has to be able
+// to query it uniformly on every install, fresh or migrated, to find and
+// clear those old dangling references when their origin inbox is deleted.
+const itemsColumns = db.prepare('PRAGMA table_info(items)').all();
+if (!itemsColumns.some((c) => c.name === 'from_inbox_id')) {
+  db.exec('ALTER TABLE items ADD COLUMN from_inbox_id INTEGER REFERENCES inboxes(id)');
+}
+
 // accounts/connections/connect_codes are leftovers from the pre-ephemeral
 // era (real usernames/passwords, friend connections, admin) — no route
 // reads or writes them anymore. They can't just be left inert: node:sqlite
