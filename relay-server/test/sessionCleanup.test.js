@@ -7,7 +7,7 @@ const path = require('node:path');
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'share-to-pc-test-'));
 process.env.DB_PATH = path.join(tmpDir, 'relay.sqlite');
 process.env.UPLOAD_DIR = path.join(tmpDir, 'uploads');
-process.env.INBOX_LIMIT_PER_HOUR = '50';
+process.env.INBOX_LIMIT_PER_WINDOW = '50';
 fs.mkdirSync(process.env.UPLOAD_DIR, { recursive: true });
 
 const request = require('supertest');

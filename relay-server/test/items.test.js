@@ -10,7 +10,7 @@ process.env.UPLOAD_DIR = path.join(tmpDir, 'uploads');
 // This file creates many inboxes across its tests, well past the
 // production default — raise the cap so the tests exercise item/file
 // isolation rather than the rate limiter itself (see inbox.test.js for that).
-process.env.INBOX_LIMIT_PER_HOUR = '50';
+process.env.INBOX_LIMIT_PER_WINDOW = '50';
 fs.mkdirSync(process.env.UPLOAD_DIR, { recursive: true });
 
 const request = require('supertest');

@@ -36,15 +36,18 @@ app.use(
 app.use(express.json());
 
 // POST /inbox is the unauthenticated front door now that /pair/init
-// requires a token (see routes/pair.js) — legitimate use is "once per new
-// person setting up the app," so a stricter, hourly cap keeps mass
-// inbox-creation abuse expensive without blocking normal setup. 5/hour
-// proved too tight in practice; 30/hour still did too — every single
-// "tap Send, test, start over" cycle burns one of these, and testing/
-// demoing the app a bit heavily blew through it well before an hour was
-// up, surfacing as a genuine-looking "the app is broken" error. Inbox
-// rows are cheap and self-cleaning (see lib/sessionCleanup.js's 10-minute
-// abandoned-inbox sweep), so there's room to be much more generous here.
+// requires a token (see routes/pair.js). This has been raised twice
+// already (5/hour, then 30/hour) and both were still too tight — every
+// single "tap Send, test, start over" cycle burns one, and normal heavy
+// testing/demoing kept blowing through the cap well before the window
+// reset. The real problem wasn't just the cap, it was the WINDOW: with a
+// 1-hour window, hitting the limit means being locked out for up to a
+// full hour, which is brutal for anyone actively testing. Switched to a
+// much shorter window with a proportionally generous cap, so hitting it
+// is both harder to do and, if it happens anyway, recovers in minutes
+// instead of up to an hour. Inbox rows are cheap and self-cleaning (see
+// lib/sessionCleanup.js's 10-minute abandoned-inbox sweep) — there's
+// nothing expensive being protected here that justifies the old window.
 // express-rate-limit's default handler replies with plain text ("Too many
 // requests, please try again later.") — every client error path here
 // unconditionally calls res.json() on a non-2xx response, so a rate limit
@@ -56,8 +59,8 @@ const rateLimitHandler = (req, res) => {
 };
 
 const inboxLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: Number(process.env.INBOX_LIMIT_PER_HOUR) || 120,
+  windowMs: Number(process.env.INBOX_LIMIT_WINDOW_MS) || 10 * 60 * 1000,
+  limit: Number(process.env.INBOX_LIMIT_PER_WINDOW) || 200,
   handler: rateLimitHandler,
 });
 app.use('/inbox', inboxLimiter, inboxRoutes);

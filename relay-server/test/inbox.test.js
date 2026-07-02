@@ -7,7 +7,7 @@ const path = require('node:path');
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'share-to-pc-test-'));
 process.env.DB_PATH = path.join(tmpDir, 'relay.sqlite');
 process.env.UPLOAD_DIR = path.join(tmpDir, 'uploads');
-process.env.INBOX_LIMIT_PER_HOUR = '3';
+process.env.INBOX_LIMIT_PER_WINDOW = '3';
 fs.mkdirSync(process.env.UPLOAD_DIR, { recursive: true });
 
 const request = require('supertest');
@@ -34,7 +34,7 @@ test('creating an inbox honors a custom label', async () => {
 });
 
 test('inbox creation is rate limited', async () => {
-  // INBOX_LIMIT_PER_HOUR=3 above; this test alone already used 2 inboxes,
+  // INBOX_LIMIT_PER_WINDOW=3 above; this test alone already used 2 inboxes,
   // so a couple more calls should trip the limiter.
   let sawLimit = false;
   for (let i = 0; i < 5; i++) {
