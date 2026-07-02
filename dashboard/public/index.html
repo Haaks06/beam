@@ -16,7 +16,7 @@
     <a class="nav-link" data-page="security">Security</a>
     <a class="nav-link" data-page="functions">Functions / API</a>
     <a class="nav-link" data-page="patchnotes">Patch Notes</a>
-    <div class="nav-meta">relay v0.8.2<br />desktop v0.4.4<br />localhost only</div>
+    <div class="nav-meta" id="nav-meta">relay v…<br />desktop v…<br />localhost only</div>
   </nav>
 
   <main>
@@ -240,14 +240,15 @@
       <p class="page-sub">The real history, grouped by theme rather than dumped as raw commits — read top to bottom for the story of how this got to where it is.</p>
 
       <div class="patch">
-        <div class="patch-version">Current — relay v0.8.2 · desktop v0.4.4</div>
+        <div class="patch-version" id="patch-current-version">Current — relay v… · desktop v…</div>
         <h3>Live-usage fixes</h3>
         <ul>
+          <li><b>Fixed (properly, third attempt):</b> the inbox-creation rate limit kept getting hit during normal use even after two straight cap increases (5/hr → 30/hr → 120/hr). The real problem was the 1-hour <i>window</i> — hitting the cap meant up to an hour locked out. Switched to a 10-minute window with a 200 cap: harder to hit, and recovers in minutes if it happens anyway.</li>
           <li><b>Fixed:</b> refreshing the page mid-session (e.g. on a phone) could wipe out a perfectly valid active connection — a leftover URL parameter was re-triggering a pairing claim on every reload.</li>
           <li><b>Fixed:</b> rate-limit errors crashed the client with a raw JSON-parse error instead of a readable message.</li>
           <li><b>Fixed:</b> the sender used to see their own sent item echoed back into their own Received tab. Now excluded server-side; the send confirmation names exactly what was sent instead.</li>
           <li><b>Added:</b> in-browser camera QR scanning (browser only — removed from the desktop app once it turned out Electron's camera permissions aren't set up for it).</li>
-          <li><b>Raised:</b> the inbox-creation rate limit twice (5/hr → 30/hr → 120/hr) after real testing kept hitting it during normal use.</li>
+          <li><b>Added:</b> this dashboard — a local-only overview with a live, runnable demonstration of the actual file-flow pipeline.</li>
         </ul>
       </div>
 
@@ -291,6 +292,13 @@
           <li>Moved hosting from Render to Fly.io for a persistent volume.</li>
         </ul>
       </div>
+
+      <h2>Raw commit log</h2>
+      <p class="muted">Read live off git on every page load — this list is never stale even if the curated write-up above hasn't caught up yet with whatever shipped most recently.</p>
+      <table id="commit-log-table">
+        <tr><th>Commit</th><th>Message</th><th>Date</th></tr>
+        <tr><td colspan="3" class="muted">Loading…</td></tr>
+      </table>
     </section>
 
   </main>
