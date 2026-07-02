@@ -72,7 +72,34 @@ app.whenReady().then(async () => {
   } else {
     startRelayClient();
   }
+
+  // Render's free tier can wipe the relay's database well before this app
+  // is ever restarted (observed: even a single 15-minute idle sleep/wake
+  // cycle can do it, not just redeploys) — so a token minted at startup
+  // can go stale while the app keeps running. Periodically re-check and
+  // silently re-provision instead of requiring "quit and reopen."
+  setInterval(recoverIfTokenInvalid, 5 * 60 * 1000);
 });
+
+// If the stored token has been invalidated since we last checked, mint a
+// fresh inbox and restart the relay connection with it. Any devices paired
+// to the old inbox will need to re-pair (there's no way around that — the
+// old inbox is simply gone), so this notifies the user rather than doing
+// it silently.
+async function recoverIfTokenInvalid() {
+  const config = store.load();
+  if (!config.token || (await isTokenValid(config))) return;
+
+  try {
+    await ensureOwnDevice();
+  } catch (err) {
+    console.error('failed to recover from an invalidated token', err);
+    return;
+  }
+  relayClient?.stop();
+  startRelayClient();
+  notify(`${APP_NAME} reconnected`, "The relay reset and your old pairing was lost — left-click the tray icon and choose Pair device to reconnect your phone.");
+}
 
 // Render's free tier disk is ephemeral (see docs/HOSTING.md) — a redeploy
 // or instance recycle can wipe the relay's database, silently invalidating
@@ -188,12 +215,21 @@ function notify(title, body) {
   }
 }
 
-function showPairingWindow() {
-  const config = store.load();
-  if (!config.token || !config.relayUrl) {
+async function showPairingWindow() {
+  // Re-validate (and silently re-provision if needed) right before opening,
+  // so a token that went stale while the app was idle can't produce the
+  // blank/broken QR this used to show — see recoverIfTokenInvalid above.
+  try {
+    if (await ensureOwnDevice()) {
+      relayClient?.stop();
+      startRelayClient();
+    }
+  } catch (err) {
     notify(`${APP_NAME} isn't connected`, 'Quit and reopen the app once you have a network connection, then try again.');
     return;
   }
+
+  const config = store.load();
   if (pairingWindow) {
     pairingWindow.focus();
     return;
