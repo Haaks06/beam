@@ -135,13 +135,13 @@ function refreshPairedState() {
     requestAnimationFrame(positionTabIndicator);
   } else {
     disconnectReceivedFeed();
-    setConnPill('disconnected');
+    if (connPill) connPill.style.display = 'none';
   }
 }
 
 function setConnPill(state) {
   if (!connPill) return;
-  connPill.hidden = false;
+  connPill.style.display = 'inline-flex';
   connPill.classList.remove('connected', 'connecting', 'disconnected');
   connPill.classList.add(state);
   connPillText.textContent = state === 'connected' ? 'live' : state === 'connecting' ? 'connecting…' : 'offline';

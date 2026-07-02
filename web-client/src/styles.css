@@ -299,11 +299,13 @@ button.primary.sending::after {
 button.link {
   border: none;
   width: auto;
-  padding: 0;
+  /* Visually reads as plain text, but padding still gives it a >=24px
+     tap target (WCAG 2.2 target size) rather than just the glyph height. */
+  padding: 7px 2px;
+  margin: 12px -2px 0;
   color: var(--muted);
   font-size: 12px;
-  margin-top: 12px;
-  border-radius: 0;
+  border-radius: 4px;
 }
 button.link:hover { color: var(--fg); background: none; }
 
