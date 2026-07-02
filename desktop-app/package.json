@@ -24,7 +24,9 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
-      "publisherName": "Haaks06"
+      "signtoolOptions": {
+        "publisherName": "Haaks06"
+      }
     }
   }
 }
