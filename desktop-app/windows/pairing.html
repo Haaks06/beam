@@ -3,17 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <title>Pair a device — Beam</title>
+  <link rel="stylesheet" href="beam-theme.css" />
   <style>
-    :root {
-      --bg: #0a0a0a;
-      --fg: #e8e8e8;
-      --muted: #6b6b6b;
-      --line: #232323;
-      --success: #6bcf9a;
-      --error: #e17a7a;
-      --accent: #2563eb;
-    }
-    * { box-sizing: border-box; }
     html, body {
       margin: 0;
       height: 100%;
@@ -21,7 +12,7 @@
     }
     body {
       position: relative;
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-family: var(--font-body);
       background: var(--bg);
       color: var(--fg);
       display: flex;
@@ -29,104 +20,40 @@
       justify-content: center;
       border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
     }
-    .close-btn {
-      -webkit-app-region: no-drag;
+    body::before {
+      content: '';
       position: absolute;
-      top: 10px;
-      right: 12px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: none;
-      background: transparent;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s ease, color 0.15s ease;
+      inset: -20% -60% auto auto;
+      width: 380px;
+      height: 380px;
+      background: url('../assets/beam-logo.png') center / cover no-repeat;
+      opacity: 0.14;
+      mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 70%);
+      -webkit-mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
     }
-    .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
     main {
+      position: relative;
+      z-index: 1;
       width: 300px;
       text-align: center;
       opacity: 0;
-      transform: translateY(6px);
-      animation: reveal 0.4s ease 0.1s forwards;
-    }
-    @keyframes reveal {
-      to { opacity: 1; transform: translateY(0); }
+      transform: translateY(8px);
+      animation: reveal 0.45s var(--ease-out-expo) 0.1s forwards;
     }
     h1 {
       margin: 0 0 4px;
-      font-size: 13px;
+      font-family: var(--font-display);
+      font-size: 12.5px;
       font-weight: 600;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
     }
-    p.subtitle { margin: 0 0 24px; font-size: 13px; color: var(--muted); }
-    img.qr {
-      width: 200px;
-      height: 200px;
-      background: #fff;
-      display: block;
-      margin: 0 auto;
-      border-radius: 10px;
-      opacity: 0;
-      transition: opacity 0.35s ease;
-    }
-    img.qr.loaded { opacity: 1; }
-    .code {
-      font-family: ui-monospace, "SF Mono", Consolas, monospace;
-      font-size: 26px;
-      letter-spacing: 0.3em;
-      font-weight: 500;
-      margin: 20px 0 0;
-      padding-left: 0.3em; /* visually re-center after letter-spacing */
-      color: var(--accent);
-    }
-    hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
-    .status {
-      min-height: 18px;
-      font-size: 12px;
-      color: var(--muted);
-      transition: color 0.2s ease;
-    }
-    .status.success { color: var(--success); }
-    .status.error { color: var(--error); }
-    .join-label { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
-    .join-row { display: flex; gap: 6px; -webkit-app-region: no-drag; }
-    .join-row input {
-      flex: 1;
-      min-width: 0;
-      font-size: 13px;
-      padding: 7px 8px;
-      background: transparent;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      color: var(--fg);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-    .join-row input:focus { outline: none; border-color: var(--accent); }
-    .join-row input::placeholder { color: #4a4a4a; text-transform: none; letter-spacing: normal; }
-    .join-row button {
-      font-size: 12px;
-      padding: 7px 12px;
-      background: transparent;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      color: var(--fg);
-      cursor: pointer;
-      transition: border-color 0.15s ease, color 0.15s ease;
-    }
-    .join-row button:hover { border-color: var(--accent); color: var(--accent); }
-    .join-row button:disabled { opacity: 0.5; cursor: default; }
+    p.subtitle { margin: 0 0 22px; font-size: 13px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -134,7 +61,11 @@
   <main>
     <h1>Pair a device</h1>
     <p class="subtitle">Scan with your phone, or enter the code manually</p>
-    <img class="qr" id="qr" src="" alt="QR code" />
+    <div class="scan-frame" id="frame">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <span class="scanline"></span>
+      <img class="qr" id="qr" src="" alt="QR code" />
+    </div>
     <div class="code" id="code">------</div>
     <hr />
     <div class="status" id="status">Generating code…</div>

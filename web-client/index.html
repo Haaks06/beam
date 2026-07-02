@@ -5,251 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Beam</title>
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" href="/icons/icon-192.png" />
-  <meta name="theme-color" content="#0a0a0a" />
-  <style>
-    :root {
-      --bg: #0a0a0a;
-      --fg: #e8e8e8;
-      --muted: #6b6b6b;
-      --line: #202020;
-      --success: #6bcf9a;
-      --error: #e17a7a;
-      --accent: #2563eb;
-    }
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-      max-width: 420px;
-      margin: 0 auto;
-      padding: 40px 20px 48px;
-      background: var(--bg);
-      color: var(--fg);
-    }
-    h1 {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      margin: 0 0 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    #install-btn {
-      display: none;
-      width: auto;
-      margin: 0;
-      padding: 5px 10px;
-      font-size: 11px;
-    }
-    section { margin-bottom: 28px; }
-    .section-title {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin: 0 0 14px;
-    }
-    label { display: block; font-size: 12px; color: var(--muted); margin-top: 14px; }
-    label:first-of-type { margin-top: 0; }
-    input {
-      font-size: 14px;
-      padding: 9px 0;
-      width: 100%;
-      box-sizing: border-box;
-      margin-top: 6px;
-      background: transparent;
-      border: none;
-      border-bottom: 1px solid var(--line);
-      color: var(--fg);
-    }
-    input:focus { outline: none; border-bottom-color: var(--fg); }
-    input::placeholder { color: #4a4a4a; }
-    select {
-      font-size: 14px;
-      padding: 9px 0;
-      width: 100%;
-      box-sizing: border-box;
-      margin-top: 6px;
-      background: transparent;
-      border: none;
-      border-bottom: 1px solid var(--line);
-      color: var(--fg);
-    }
-    select:focus { outline: none; border-bottom-color: var(--fg); }
-    select option { background: var(--bg); color: var(--fg); }
-    button {
-      font-size: 13px;
-      padding: 9px 12px;
-      width: 100%;
-      background: transparent;
-      color: var(--fg);
-      border: 1px solid var(--line);
-      margin-top: 16px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    button:hover { border-color: var(--fg); }
-    button:disabled { opacity: 0.4; cursor: default; }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.primary:hover { opacity: 0.9; }
-    button.link {
-      border: none;
-      width: auto;
-      padding: 0;
-      color: var(--muted);
-      font-size: 12px;
-      margin-top: 12px;
-    }
-    button.link:hover { color: var(--fg); }
-    .divider {
-      display: flex;
-      align-items: center;
-      color: var(--muted);
-      font-size: 11px;
-      margin: 20px 0;
-      gap: 10px;
-    }
-    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-    #status { min-height: 20px; color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; }
-    #status.success { color: var(--success); }
-    #status.error { color: var(--error); }
-
-    /* "Swept away" once paired — collapses rather than just hiding, so the
-       transition itself communicates "you're set up now." */
-    #start-section {
-      overflow: hidden;
-      max-height: 500px;
-      opacity: 1;
-      transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease;
-    }
-    #start-section.collapsed {
-      max-height: 0;
-      opacity: 0;
-      margin-bottom: 0;
-      pointer-events: none;
-    }
-    #paired-banner { display: none; color: var(--success); font-size: 12px; margin-bottom: 8px; }
-    #repair-link {
-      display: none;
-      font-size: 11px;
-      color: var(--muted);
-      text-align: center;
-      margin-top: 8px;
-      cursor: pointer;
-    }
-    #repair-link:hover { color: var(--fg); }
-    #version-footer { text-align: center; font-size: 10px; color: #4a4a4a; margin-top: 24px; }
-
-    /* Invite overlay: shown while waiting for a second device to type the code in. */
-    #invite-section { display: none; text-align: center; }
-    #invite-code {
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: 0.15em;
-      margin: 14px 0;
-    }
-    #invite-qr { width: 160px; height: 160px; margin: 0 auto; display: block; }
-
-    #received-list { display: flex; flex-direction: column; gap: 10px; }
-    #received-empty { color: var(--muted); font-size: 12px; }
-    .item-row {
-      border: 1px solid var(--line);
-      padding: 10px 12px;
-      font-size: 13px;
-    }
-    .item-row .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .item-row a { color: var(--fg); word-break: break-all; }
-    .item-row img { max-width: 100%; display: block; margin-top: 8px; border: 1px solid var(--line); }
-    .item-row .download { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--muted); }
-    .item-row .friend-badge {
-      display: inline-block;
-      font-size: 10px;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-      border-radius: 3px;
-      padding: 1px 5px;
-      margin-top: 4px;
-    }
-
-    #friend-invite-overlay { display: none; text-align: center; margin-top: 16px; }
-    #friend-invite-code {
-      font-family: ui-monospace, "SF Mono", Consolas, monospace;
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: 0.2em;
-      margin: 12px 0;
-      color: var(--accent);
-    }
-    #friend-invite-qr { width: 140px; height: 140px; margin: 0 auto; display: block; }
-
-    .connection-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--line);
-      font-size: 13px;
-    }
-    .connection-row .actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .connection-row button {
-      width: auto;
-      margin: 0;
-      padding: 5px 10px;
-      font-size: 11px;
-    }
-    .connection-row button.accept { border-color: var(--success); color: var(--success); }
-    .connection-row button.reject { border-color: var(--error); color: var(--error); }
-    #friends-empty, #pending-empty { color: var(--muted); font-size: 12px; }
-    .device-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-    .device-row .device-meta { font-size: 11px; color: var(--muted); }
-    .device-row .current-badge { font-size: 10px; color: var(--success); border: 1px solid var(--success); border-radius: 3px; padding: 1px 5px; margin-left: 6px; }
-    .device-row button.revoke { width: auto; margin: 0; padding: 5px 10px; font-size: 11px; border-color: var(--error); color: var(--error); flex-shrink: 0; }
-    #devices-empty { color: var(--muted); font-size: 12px; }
-
-    #tab-nav {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid var(--line);
-    }
-    .tab-btn {
-      flex: 1;
-      width: auto;
-      margin: 0;
-      padding: 10px 4px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .tab-btn:hover { color: var(--fg); }
-    .tab-btn.active { color: var(--fg); border-bottom-color: var(--accent); }
-    .label-detail { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
-    .label-detail b { color: var(--fg); }
-    #paired-banner b { color: var(--success); }
-  </style>
+  <link rel="icon" href="/icons/icon-32.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="theme-color" content="#050308" />
 </head>
 <body>
-  <h1>Beam <button id="install-btn">Install</button></h1>
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-mark" src="/icons/icon-64.png" alt="" width="26" height="26" />
+      <h1>Beam</h1>
+    </div>
+    <div class="header-actions">
+      <span id="conn-pill" class="signal" style="display:none"><span class="dot"></span><span id="conn-pill-text"></span></span>
+      <button id="install-btn">Install</button>
+    </div>
+  </header>
+  <p class="tagline">Send a link or photo from this device and watch it land on your PC in real time.</p>
 
   <section id="start-section">
     <p class="section-title">Get started</p>
     <button id="start-btn" class="primary">Start Beaming on this device</button>
 
-    <div class="divider">or create an account</div>
-    <label>Username<input id="signup-username" placeholder="3-24 characters: letters, numbers, _ or -" /></label>
-    <label>Password<input id="signup-password" type="password" placeholder="At least 8 characters" /></label>
-    <button id="signup-btn">Create account</button>
-
-    <div class="divider">already have an account?</div>
-    <label>Username<input id="login-username" /></label>
-    <label>Password<input id="login-password" type="password" /></label>
-    <button id="login-btn">Log in</button>
+    <div class="divider">or use an account</div>
+    <div class="account-mode-toggle">
+      <button type="button" id="mode-signup-btn" class="mode-btn active">Sign up</button>
+      <button type="button" id="mode-login-btn" class="mode-btn">Log in</button>
+    </div>
+    <label>Username<input id="account-username" placeholder="3-24 characters: letters, numbers, _ or -" autocomplete="username" /></label>
+    <label>Password
+      <div class="password-field">
+        <input id="account-password" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
+        <button type="button" id="toggle-password-btn" class="password-toggle">Show</button>
+      </div>
+    </label>
+    <button id="account-submit-btn" class="primary">Create account</button>
 
     <div class="divider">or join a device that's already Beaming</div>
     <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
@@ -264,6 +53,7 @@
       <button class="tab-btn active" data-tab="home">Home</button>
       <button class="tab-btn" data-tab="devices">Devices</button>
       <button class="tab-btn" data-tab="friends">Friends</button>
+      <span class="tab-indicator" id="tab-indicator"></span>
     </nav>
 
     <div class="tab-panel" id="tab-home">
@@ -275,9 +65,9 @@
           </select>
         </label>
         <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
-        <button id="send-link-btn">Send</button>
+        <button id="send-link-btn" class="primary">Send</button>
         <label>Photo<input id="photo-file" type="file" accept="image/*" /></label>
-        <button id="send-photo-btn">Send photo</button>
+        <button id="send-photo-btn" class="primary">Send photo</button>
       </section>
 
       <section id="received-section">
@@ -294,10 +84,14 @@
         <button id="invite-btn">Invite another device</button>
       </section>
 
-      <section id="invite-section">
+      <section id="invite-section" style="display:none">
         <p class="section-title">Enter this code on the other device</p>
+        <div class="scan-frame" id="invite-frame">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <span class="scanline"></span>
+          <img class="qr" id="invite-qr" alt="Pairing QR code" />
+        </div>
         <div id="invite-code"></div>
-        <img id="invite-qr" alt="Pairing QR code" />
         <button id="invite-cancel-btn" class="link">Cancel</button>
       </section>
 
@@ -317,19 +111,23 @@
         <label>Friend's code<input id="friend-code-input" placeholder="ABC123" maxlength="6" /></label>
         <button id="add-friend-btn">Add friend</button>
 
-        <div id="friend-invite-overlay">
+        <div id="friend-invite-overlay" style="display:none">
           <p class="section-title">Have them enter this code</p>
+          <div class="scan-frame" id="friend-invite-frame">
+            <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+            <span class="scanline"></span>
+            <img class="qr" id="friend-invite-qr" alt="Connect QR code" />
+          </div>
           <div id="friend-invite-code"></div>
-          <img id="friend-invite-qr" alt="Connect QR code" />
           <button id="friend-invite-cancel-btn" class="link">Cancel</button>
         </div>
 
-        <div id="pending-requests" style="display:none; margin-top:16px;">
+        <div id="pending-requests" style="display: none; margin-top: 16px;">
           <p class="section-title">Pending requests</p>
           <div id="pending-list"></div>
         </div>
 
-        <div style="margin-top:16px;">
+        <div style="margin-top: 16px;">
           <p class="section-title">Your friends</p>
           <div id="friends-empty">No friends connected yet.</div>
           <div id="friends-list"></div>

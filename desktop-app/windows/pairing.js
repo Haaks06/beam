@@ -6,6 +6,7 @@ const isFirstRun = params.get('firstRun') === '1';
 const qrImg = document.getElementById('qr');
 const codeEl = document.getElementById('code');
 const statusEl = document.getElementById('status');
+const frameEl = document.getElementById('frame');
 
 let pollTimer = null;
 
@@ -32,6 +33,7 @@ async function init() {
   qrImg.src = data.qrDataUrl;
   qrImg.onload = () => qrImg.classList.add('loaded');
   codeEl.textContent = data.pairingCode;
+  frameEl?.classList.add('active');
   setStatus('Waiting for a device to scan or enter this code…');
   poll(data.pairingCode);
 }
@@ -43,6 +45,9 @@ function poll(code) {
       const data = await res.json();
       if (data.status === 'claimed') {
         clearInterval(pollTimer);
+        // Lock the viewfinder onto the beam-bright color before the window
+        // closes — a beat of "landed" feedback rather than an abrupt cut.
+        frameEl?.classList.add('locked');
         if (isFirstRun) {
           setStatus("You're all set! Beam will keep running quietly — look for its icon near your clock.", 'success');
           setTimeout(() => window.close(), 4000);
@@ -91,37 +96,61 @@ const toggleAccountBtn = document.getElementById('toggle-account-btn');
 const accountSection = document.getElementById('account-section');
 const accountUsernameInput = document.getElementById('account-username');
 const accountPasswordInput = document.getElementById('account-password');
-const accountSignupBtn = document.getElementById('account-signup-btn');
-const accountLoginBtn = document.getElementById('account-login-btn');
+const togglePasswordBtn = document.getElementById('toggle-password-btn');
+const modeSignupBtn = document.getElementById('mode-signup-btn');
+const modeLoginBtn = document.getElementById('mode-login-btn');
+const accountSubmitBtn = document.getElementById('account-submit-btn');
 
 if (toggleAccountBtn && accountSection) {
   toggleAccountBtn.addEventListener('click', () => {
     const showing = accountSection.style.display === 'block';
     accountSection.style.display = showing ? 'none' : 'block';
     toggleAccountBtn.textContent = showing ? 'Use a username & password instead' : 'Hide';
+    if (!showing) accountUsernameInput.focus();
   });
 }
 
-async function handleAccountAction(button, ipcCall) {
-  const username = accountUsernameInput.value.trim();
-  const password = accountPasswordInput.value;
-  if (!username || !password) return setStatus('Enter a username and password.', 'error');
-  button.disabled = true;
-  setStatus('Working…');
-  const result = await ipcCall(username, password);
-  if (result.ok) {
-    clearInterval(pollTimer);
-    setStatus(`You're "${result.displayName}"! Closing…`, 'success');
-    setTimeout(() => window.close(), 1500);
-  } else {
-    button.disabled = false;
-    setStatus(result.error, 'error');
-  }
+if (togglePasswordBtn && accountPasswordInput) {
+  togglePasswordBtn.addEventListener('click', () => {
+    const revealed = accountPasswordInput.type === 'text';
+    accountPasswordInput.type = revealed ? 'password' : 'text';
+    togglePasswordBtn.textContent = revealed ? 'Show' : 'Hide';
+  });
 }
 
-if (accountSignupBtn && window.beamPair) {
-  accountSignupBtn.addEventListener('click', () => handleAccountAction(accountSignupBtn, window.beamPair.signupAccount));
+// One field set, one primary button — the mode toggle changes which action
+// that button takes instead of showing two competing buttons for the same
+// two fields, which read as "which one do I want?" rather than a single
+// clear next step.
+let accountMode = 'signup';
+function setAccountMode(mode) {
+  accountMode = mode;
+  modeSignupBtn.classList.toggle('active', mode === 'signup');
+  modeLoginBtn.classList.toggle('active', mode === 'login');
+  accountSubmitBtn.textContent = mode === 'signup' ? 'Create account' : 'Log in';
+  accountPasswordInput.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
 }
-if (accountLoginBtn && window.beamPair) {
-  accountLoginBtn.addEventListener('click', () => handleAccountAction(accountLoginBtn, window.beamPair.loginAccount));
+if (modeSignupBtn && modeLoginBtn) {
+  modeSignupBtn.addEventListener('click', () => setAccountMode('signup'));
+  modeLoginBtn.addEventListener('click', () => setAccountMode('login'));
+}
+
+if (accountSubmitBtn && window.beamPair) {
+  accountSubmitBtn.addEventListener('click', async () => {
+    const username = accountUsernameInput.value.trim();
+    const password = accountPasswordInput.value;
+    if (!username || !password) return setStatus('Enter a username and password.', 'error');
+    accountSubmitBtn.disabled = true;
+    setStatus(accountMode === 'signup' ? 'Creating account…' : 'Logging in…');
+    const ipcCall = accountMode === 'signup' ? window.beamPair.signupAccount : window.beamPair.loginAccount;
+    const result = await ipcCall(username, password);
+    if (result.ok) {
+      clearInterval(pollTimer);
+      setStatus(`You're "${result.displayName}"! Closing…`, 'success');
+      setTimeout(() => window.close(), 1500);
+    } else {
+      accountSubmitBtn.disabled = false;
+      setStatus(result.error, 'error');
+    }
+  });
 }

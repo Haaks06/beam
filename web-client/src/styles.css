@@ -1,0 +1,570 @@
+/* ==========================================================================
+   Beam — design tokens & components
+
+   Palette is extracted directly from the product mark (public/beam-logo.jpg):
+   a "B" formed of two converging wave shapes on near-black, with a violet
+   beam of light shooting out of the point where they meet. Every accent
+   color below is sampled from that artwork rather than invented — the
+   near-white core of the beam is the brightest thing in the app and is
+   reserved for the single moment something "lands"; the mid-violet is the
+   steady/live color; the deep violet is used for ambient depth only.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/SpaceGrotesk-Variable.woff2') format('woff2');
+}
+
+:root {
+  /* -- surfaces -- */
+  --bg: #050308;
+  --bg-void: #020106;
+  --surface: #0d0a18;
+  --surface-hover: #151027;
+  --line: #211a37;
+  --line-strong: #322a52;
+
+  /* -- text -- */
+  --fg: #f2eefc;
+  --muted: #948dbd;
+  --muted-2: #5d5580;
+
+  /* -- beam violet scale, sampled from the mark -- */
+  --violet-50: #f2d6ff;
+  --violet-300: #b586ff;
+  --violet-400: #9659f8;
+  --violet-500: #7238f5;
+  --violet-600: #5d25d4;
+  --violet-700: #401590;
+  --violet-900: #1f0a4a;
+
+  --beam-gradient: linear-gradient(115deg, var(--violet-400), var(--violet-500) 55%, var(--violet-600));
+  --beam-gradient-soft: linear-gradient(90deg, var(--violet-50), var(--violet-400) 30%, transparent 85%);
+
+  --error: #ff5470;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -- keyframes -------------------------------------------------------- */
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes beam-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0.55); }
+  70% { box-shadow: 0 0 0 9px rgba(150, 89, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0); }
+}
+
+@keyframes land-in {
+  0% { opacity: 0; transform: translateY(-14px) scale(0.94); }
+  55% { opacity: 1; transform: translateY(2px) scale(1.015); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes landed-flash {
+  0% { box-shadow: inset 0 0 0 1px var(--violet-50), 0 0 22px -4px var(--violet-400); border-color: var(--violet-300); }
+  100% { box-shadow: inset 0 0 0 1px transparent, 0 0 0 0 transparent; border-color: var(--line); }
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-160%) skewX(-14deg); }
+  100% { transform: translateX(260%) skewX(-14deg); }
+}
+
+@keyframes photon-travel {
+  0% { left: -4%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { left: 104%; opacity: 0; }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes wave-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.92); }
+}
+
+/* -- base --------------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+
+body {
+  position: relative;
+  font-family: var(--font-body);
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 28px 20px 56px;
+  background: var(--bg);
+  color: var(--fg);
+  overflow-x: hidden;
+  isolation: isolate;
+}
+
+/* Ambient brand backdrop: the actual mark, bled off the top-right corner at
+   low opacity, plus a faint schematic dot-grid — a control-panel feel
+   instead of a generic blurred-blob gradient. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10% -30% auto auto;
+  width: 640px;
+  height: 640px;
+  background: url('/beam-logo.jpg') center / cover no-repeat;
+  opacity: 0.16;
+  mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 68%);
+  -webkit-mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 68%);
+  pointer-events: none;
+  z-index: -2;
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(242, 238, 252, 0.05) 1px, transparent 0);
+  background-size: 26px 26px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* -- header / brand ------------------------------------------------------ */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+}
+.brand { display: flex; align-items: center; gap: 8px; }
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: block;
+  filter: drop-shadow(0 0 10px rgba(114, 56, 245, 0.55));
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.tagline {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0 0 30px;
+  line-height: 1.5;
+}
+
+#install-btn {
+  display: none;
+  width: auto;
+  margin: 0;
+  padding: 6px 11px;
+  font-size: 11px;
+}
+
+/* -- live connection pill -------------------------------------------- */
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.signal .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+.signal.connected .dot { background: var(--violet-400); animation: beam-pulse-ring 2.2s ease-out infinite; }
+.signal.connecting .dot { background: var(--violet-600); }
+.signal.disconnected .dot { background: var(--error); }
+
+/* -- layout --------------------------------------------------------------- */
+
+section { margin-bottom: 28px; }
+.section-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 14px;
+}
+
+label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+label:first-of-type { margin-top: 0; }
+
+input, select {
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 10px 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  transition: border-color 0.2s ease;
+}
+input:focus, select:focus { outline: none; border-bottom-color: var(--violet-400); }
+input::placeholder { color: var(--muted-2); }
+select option { background: var(--surface); color: var(--fg); }
+
+/* -- buttons -------------------------------------------------------------- */
+
+button {
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 10px 12px;
+  width: 100%;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-top: 16px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.12s ease;
+}
+button:hover { border-color: var(--line-strong); color: var(--fg); background: var(--surface-hover); }
+button:active { transform: scale(0.98); }
+button:disabled { opacity: 0.45; cursor: default; transform: none; }
+button:focus-visible { outline: 2px solid var(--violet-400); outline-offset: 2px; }
+
+button.primary {
+  position: relative;
+  overflow: hidden;
+  background: var(--beam-gradient);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 20px -8px rgba(114, 56, 245, 0.65);
+}
+button.primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.5) 50%, transparent 70%);
+  transform: translateX(-160%) skewX(-14deg);
+  pointer-events: none;
+}
+button.primary:hover::after { animation: sweep 0.9s var(--ease-out-expo); }
+button.primary:hover { border-color: transparent; background: var(--beam-gradient); }
+button.primary.sending { pointer-events: none; }
+button.primary.sending::after {
+  animation: sweep 1.1s var(--ease-out-expo) infinite;
+}
+
+button.link {
+  border: none;
+  width: auto;
+  /* Visually reads as plain text, but padding still gives it a >=24px
+     tap target (WCAG 2.2 target size) rather than just the glyph height. */
+  padding: 7px 2px;
+  margin: 12px -2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  border-radius: 4px;
+}
+button.link:hover { color: var(--fg); background: none; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  color: var(--muted-2);
+  font-size: 11px;
+  margin: 22px 0;
+  gap: 10px;
+}
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+#status { min-height: 20px; color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; transition: color 0.2s ease; }
+#status.success { color: var(--violet-300); }
+#status.error { color: var(--error); }
+
+/* "Swept away" once paired — collapses rather than just hiding, so the
+   transition itself communicates "you're set up now." */
+#start-section {
+  overflow: hidden;
+  max-height: 640px;
+  opacity: 1;
+  transition: max-height 0.4s var(--ease-out-expo), opacity 0.3s ease, margin 0.4s var(--ease-out-expo);
+}
+#start-section.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-bottom: 0;
+  pointer-events: none;
+}
+#paired-banner { display: none; color: var(--violet-300); font-size: 12px; margin-bottom: 8px; }
+#paired-banner b { color: var(--violet-300); }
+#repair-link {
+  display: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 8px;
+  cursor: pointer;
+}
+#repair-link:hover { color: var(--fg); }
+#version-footer { text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--muted-2); margin-top: 28px; letter-spacing: 0.04em; }
+
+/* -- scan frame (QR codes) — a viewfinder motif, not a plain <img> ------ */
+
+.scan-frame {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto;
+  padding: 10px;
+  border-radius: var(--radius-md);
+}
+.scan-frame .corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: var(--line-strong);
+  transition: border-color 0.3s var(--ease-out-expo);
+}
+.scan-frame .corner.tl { top: 0; left: 0; border-top: 2px solid; border-left: 2px solid; border-radius: 8px 0 0 0; }
+.scan-frame .corner.tr { top: 0; right: 0; border-top: 2px solid; border-right: 2px solid; border-radius: 0 8px 0 0; }
+.scan-frame .corner.bl { bottom: 0; left: 0; border-bottom: 2px solid; border-left: 2px solid; border-radius: 0 0 0 8px; }
+.scan-frame .corner.br { bottom: 0; right: 0; border-bottom: 2px solid; border-right: 2px solid; border-radius: 0 0 8px 0; }
+.scan-frame.active .corner { border-color: var(--violet-500); }
+.scan-frame.locked .corner { border-color: var(--violet-300); }
+.scan-frame .scanline {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--violet-400), transparent);
+  animation: scanline 2.4s ease-in-out infinite;
+  opacity: 0.85;
+  pointer-events: none;
+}
+.scan-frame.locked .scanline { display: none; }
+.scan-frame img.qr {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.scan-frame img.qr.loaded { opacity: 1; }
+
+#invite-section, #friend-invite-overlay { text-align: center; }
+#invite-code, #friend-invite-code {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  margin: 16px 0 2px;
+  padding-left: 0.16em;
+  color: var(--fg);
+}
+#friend-invite-code { color: var(--violet-300); }
+
+/* -- received feed --------------------------------------------------------- */
+
+#received-list { display: flex; flex-direction: column; gap: 10px; }
+#received-empty { color: var(--muted); font-size: 12px; }
+.item-row {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  font-size: 13px;
+  background: var(--surface);
+}
+.item-row.land-in { animation: land-in 0.5s var(--ease-spring) both, landed-flash 1.1s ease-out 0.15s both; }
+.item-row .meta { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: var(--font-mono); }
+.item-row a { color: var(--violet-300); word-break: break-all; text-decoration: none; }
+.item-row a:hover { text-decoration: underline; }
+.item-row img { max-width: 100%; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--line); }
+.item-row .download { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.item-row .friend-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--violet-300);
+  border: 1px solid var(--violet-700);
+  background: rgba(114, 56, 245, 0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 6px;
+}
+
+/* -- friends / connections -------------------------------------------------- */
+
+#friend-invite-overlay { margin-top: 16px; }
+.connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.connection-row .actions { display: flex; gap: 6px; flex-shrink: 0; }
+.connection-row button {
+  width: auto;
+  margin: 0;
+  padding: 6px 11px;
+  font-size: 11px;
+}
+.connection-row button.accept { border-color: var(--violet-600); color: var(--violet-300); }
+.connection-row button.accept:hover { background: rgba(114, 56, 245, 0.12); }
+.connection-row button.reject { border-color: var(--error); color: var(--error); }
+.connection-row button.reject:hover { background: rgba(255, 84, 112, 0.1); }
+#friends-empty, #pending-empty { color: var(--muted); font-size: 12px; }
+
+/* -- tabs, with a sliding indicator instead of an instant color swap -------- */
+
+#tab-nav {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid var(--line);
+}
+.tab-btn {
+  flex: 1;
+  width: auto;
+  margin: 0;
+  padding: 11px 4px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tab-btn:hover { color: var(--fg); background: none; }
+.tab-btn.active { color: var(--fg); }
+.tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  height: 2px;
+  background: var(--beam-gradient);
+  border-radius: 2px;
+  transition: left 0.32s var(--ease-out-expo), width 0.32s var(--ease-out-expo);
+  box-shadow: 0 0 10px -1px var(--violet-500);
+}
+.label-detail { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+.label-detail b { color: var(--fg); }
+
+/* -- accounts: mode toggle, password visibility, device list -------------- */
+
+.account-mode-toggle {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 4px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+.mode-btn {
+  flex: 1;
+  width: auto;
+  margin: 0;
+  padding: 7px 0;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.mode-btn:hover { background: none; color: var(--fg); }
+.mode-btn.active { background: var(--violet-600); color: var(--fg); }
+.password-field { position: relative; }
+.password-field input { padding-right: 56px; }
+.password-toggle {
+  position: absolute;
+  right: 0;
+  top: 6px;
+  width: auto;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 2px;
+}
+.password-toggle:hover { background: none; color: var(--violet-300); }
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.device-row .current-badge {
+  font-size: 10px;
+  color: var(--violet-300);
+  border: 1px solid var(--violet-700);
+  background: rgba(114, 56, 245, 0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 6px;
+}
+.device-row button.revoke {
+  width: auto;
+  margin: 0;
+  padding: 6px 11px;
+  font-size: 11px;
+  border-color: var(--error);
+  color: var(--error);
+  flex-shrink: 0;
+}
+.device-row button.revoke:hover { background: rgba(255, 84, 112, 0.1); }
+#devices-empty { color: var(--muted); font-size: 12px; }

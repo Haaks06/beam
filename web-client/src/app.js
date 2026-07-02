@@ -1,3 +1,5 @@
+import './styles.css';
+
 const DB_NAME = 'share-to-pc';
 const STORE_NAME = 'config';
 
@@ -63,22 +65,30 @@ const pairingCodeInput = document.getElementById('pairing-code');
 const inviteSection = document.getElementById('invite-section');
 const inviteCodeEl = document.getElementById('invite-code');
 const inviteQrEl = document.getElementById('invite-qr');
+const inviteFrame = document.getElementById('invite-frame');
 const friendsSection = document.getElementById('friends-section');
 const friendCodeInput = document.getElementById('friend-code-input');
 const friendInviteOverlay = document.getElementById('friend-invite-overlay');
 const friendInviteCodeEl = document.getElementById('friend-invite-code');
 const friendInviteQrEl = document.getElementById('friend-invite-qr');
+const friendInviteFrame = document.getElementById('friend-invite-frame');
 const pendingRequestsWrap = document.getElementById('pending-requests');
 const pendingList = document.getElementById('pending-list');
 const friendsEmpty = document.getElementById('friends-empty');
 const friendsList = document.getElementById('friends-list');
 const sendToSelect = document.getElementById('send-to-select');
-const signupUsernameInput = document.getElementById('signup-username');
-const signupPasswordInput = document.getElementById('signup-password');
-const loginUsernameInput = document.getElementById('login-username');
-const loginPasswordInput = document.getElementById('login-password');
+const accountUsernameInput = document.getElementById('account-username');
+const accountPasswordInput = document.getElementById('account-password');
+const togglePasswordBtn = document.getElementById('toggle-password-btn');
+const modeSignupBtn = document.getElementById('mode-signup-btn');
+const modeLoginBtn = document.getElementById('mode-login-btn');
+const accountSubmitBtn = document.getElementById('account-submit-btn');
 const devicesEmpty = document.getElementById('devices-empty');
 const devicesList = document.getElementById('devices-list');
+const tabNav = document.getElementById('tab-nav');
+const tabIndicator = document.getElementById('tab-indicator');
+const connPill = document.getElementById('conn-pill');
+const connPillText = document.getElementById('conn-pill-text');
 
 let eventSource = null;
 let invitePollTimer = null;
@@ -95,13 +105,21 @@ function setStatus(message, variant) {
 // instead of every section being visible at once with no hierarchy.
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabPanels = { home: document.getElementById('tab-home'), devices: document.getElementById('tab-devices'), friends: document.getElementById('tab-friends') };
+function positionTabIndicator() {
+  const active = document.querySelector('.tab-btn.active');
+  if (!active || !tabIndicator) return;
+  tabIndicator.style.left = `${active.offsetLeft}px`;
+  tabIndicator.style.width = `${active.offsetWidth}px`;
+}
 function activateTab(name) {
   for (const btn of tabButtons) btn.classList.toggle('active', btn.dataset.tab === name);
   for (const [key, panel] of Object.entries(tabPanels)) panel.style.display = key === name ? 'block' : 'none';
+  positionTabIndicator();
 }
 for (const btn of tabButtons) {
   btn.addEventListener('click', () => activateTab(btn.dataset.tab));
 }
+window.addEventListener('resize', positionTabIndicator);
 
 // Once paired, the "get started" form has done its job — sweep it away so
 // the page is just the tabbed app shell, not a form you have to look past.
@@ -119,6 +137,12 @@ function refreshPairedState() {
     myLabelEl.textContent = label;
     myLabelDetailEl.textContent = label;
     loadIdentity();
+    // Layout only settles once the shell is actually visible, so the tab
+    // indicator's first position has to wait a frame rather than being
+    // computed against a still-collapsed (0-width) nav.
+    requestAnimationFrame(positionTabIndicator);
+  } else if (connPill) {
+    connPill.style.display = 'none';
   }
   if (relayUrl) relayUrlInput.value = relayUrl;
   if (paired) {
@@ -143,6 +167,14 @@ async function loadIdentity() {
   } catch {
     // Best-effort — keep the device-label fallback already shown.
   }
+}
+
+function setConnPill(state) {
+  if (!connPill) return;
+  connPill.style.display = 'inline-flex';
+  connPill.classList.remove('connected', 'connecting', 'disconnected');
+  connPill.classList.add(state);
+  connPillText.textContent = state === 'connected' ? 'live' : state === 'connecting' ? 'connecting…' : 'offline';
 }
 
 repairLink.addEventListener('click', () => {
@@ -181,6 +213,9 @@ function prefillRelayUrl() {
 
 document.getElementById('start-btn').addEventListener('click', async () => {
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+  const startBtn = document.getElementById('start-btn');
+  startBtn.classList.add('sending');
+  startBtn.disabled = true;
   try {
     setStatus('Starting...');
     const res = await fetch(`${relayUrl}/inbox`, {
@@ -198,54 +233,68 @@ document.getElementById('start-btn').addEventListener('click', async () => {
     await showInvite();
   } catch (err) {
     setStatus(`Couldn't start: ${err.message}`, 'error');
+  } finally {
+    startBtn.classList.remove('sending');
+    startBtn.disabled = false;
   }
 });
 
-document.getElementById('signup-btn').addEventListener('click', async () => {
-  const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
-  const username = signupUsernameInput.value.trim();
-  const password = signupPasswordInput.value;
-  if (!username || !password) return setStatus('Enter a username and password.', 'error');
-  try {
-    setStatus('Creating account...');
-    const res = await fetch(`${relayUrl}/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, label: deviceLabel() }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'signup failed');
-    const { token, displayName } = await res.json();
-    await saveConfig({ relayUrl, token });
-    refreshPairedState();
-    setStatus(`Welcome! You're "${displayName}".`, 'success');
-    signupPasswordInput.value = '';
-  } catch (err) {
-    setStatus(`Couldn't create account: ${err.message}`, 'error');
-  }
-});
+// --- Accounts: one field set, one primary button — the mode toggle
+// changes which action the button takes instead of showing two competing
+// forms for the same two fields, which read as "which one do I want?"
+// rather than a single clear next step. ---
 
-document.getElementById('login-btn').addEventListener('click', async () => {
-  const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
-  const username = loginUsernameInput.value.trim();
-  const password = loginPasswordInput.value;
-  if (!username || !password) return setStatus('Enter your username and password.', 'error');
-  try {
-    setStatus('Logging in...');
-    const res = await fetch(`${relayUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, label: deviceLabel() }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'login failed');
-    const { token, displayName } = await res.json();
-    await saveConfig({ relayUrl, token });
-    refreshPairedState();
-    setStatus(`Logged in as "${displayName}".`, 'success');
-    loginPasswordInput.value = '';
-  } catch (err) {
-    setStatus(`Couldn't log in: ${err.message}`, 'error');
-  }
-});
+if (togglePasswordBtn && accountPasswordInput) {
+  togglePasswordBtn.addEventListener('click', () => {
+    const revealed = accountPasswordInput.type === 'text';
+    accountPasswordInput.type = revealed ? 'password' : 'text';
+    togglePasswordBtn.textContent = revealed ? 'Show' : 'Hide';
+  });
+}
+
+let accountMode = 'signup';
+function setAccountMode(mode) {
+  accountMode = mode;
+  modeSignupBtn.classList.toggle('active', mode === 'signup');
+  modeLoginBtn.classList.toggle('active', mode === 'login');
+  accountSubmitBtn.textContent = mode === 'signup' ? 'Create account' : 'Log in';
+  accountPasswordInput.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+}
+if (modeSignupBtn && modeLoginBtn) {
+  modeSignupBtn.addEventListener('click', () => setAccountMode('signup'));
+  modeLoginBtn.addEventListener('click', () => setAccountMode('login'));
+}
+
+if (accountSubmitBtn) {
+  accountSubmitBtn.addEventListener('click', async () => {
+    const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+    const username = accountUsernameInput.value.trim();
+    const password = accountPasswordInput.value;
+    if (!username || !password) return setStatus('Enter a username and password.', 'error');
+    const endpoint = accountMode === 'signup' ? '/auth/signup' : '/auth/login';
+    accountSubmitBtn.disabled = true;
+    accountSubmitBtn.classList.add('sending');
+    try {
+      setStatus(accountMode === 'signup' ? 'Creating account...' : 'Logging in...');
+      const res = await fetch(`${relayUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, label: deviceLabel() }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || `${accountMode} failed`);
+      const { token, displayName } = await res.json();
+      await saveConfig({ relayUrl, token });
+      refreshPairedState();
+      setStatus(accountMode === 'signup' ? `Welcome! You're "${displayName}".` : `Logged in as "${displayName}".`, 'success');
+      accountPasswordInput.value = '';
+    } catch (err) {
+      setStatus(`Couldn't ${accountMode === 'signup' ? 'create account' : 'log in'}: ${err.message}`, 'error');
+    } finally {
+      accountSubmitBtn.disabled = false;
+      accountSubmitBtn.classList.remove('sending');
+    }
+  });
+}
 
 document.getElementById('pair-btn').addEventListener('click', async () => {
   const relayUrl = relayUrlInput.value.trim().replace(/\/+$/, '');
@@ -281,7 +330,11 @@ async function showInvite() {
     if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
     const data = await res.json();
     inviteCodeEl.textContent = data.pairingCode;
+    inviteQrEl.classList.remove('loaded');
+    inviteQrEl.onload = () => inviteQrEl.classList.add('loaded');
     inviteQrEl.src = data.qrDataUrl;
+    inviteFrame?.classList.remove('locked');
+    inviteFrame?.classList.add('active');
     inviteSection.style.display = 'block';
     pollInvite(relayUrl, data.pairingCode);
   } catch (err) {
@@ -297,8 +350,14 @@ function pollInvite(relayUrl, code) {
       const data = await res.json();
       if (data.status === 'claimed') {
         clearInterval(invitePollTimer);
-        inviteSection.style.display = 'none';
+        // A beat of "locked on" feedback (frame + code flash to the beam's
+        // bright core color) before the section disappears, rather than an
+        // abrupt cut straight to gone.
+        inviteFrame?.classList.add('locked');
         setStatus('Device paired!', 'success');
+        setTimeout(() => {
+          inviteSection.style.display = 'none';
+        }, 700);
       }
     } catch {
       // Transient network hiccup — keep polling silently.
@@ -401,7 +460,10 @@ document.getElementById('invite-friend-btn').addEventListener('click', async () 
     if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
     const data = await res.json();
     friendInviteCodeEl.textContent = data.connectCode;
+    friendInviteQrEl.classList.remove('loaded');
+    friendInviteQrEl.onload = () => friendInviteQrEl.classList.add('loaded');
     friendInviteQrEl.src = data.qrDataUrl;
+    friendInviteFrame?.classList.add('active');
     friendInviteOverlay.style.display = 'block';
     pollFriendInvite();
   } catch (err) {
@@ -502,25 +564,40 @@ async function revokeDevice(deviceId) {
   }
 }
 
+// Toggles the beam-sweep-while-sending affordance on a button — the button
+// itself visualizes "beaming" for the duration of the request, instead of
+// only the text changing to "Sending...".
+function withSendingState(btn, fn) {
+  btn.classList.add('sending');
+  btn.disabled = true;
+  return fn().finally(() => {
+    btn.classList.remove('sending');
+    btn.disabled = false;
+  });
+}
+
 document.getElementById('send-link-btn').addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();
   const url = document.getElementById('link-url').value.trim();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!url) return setStatus('Enter something to send.', 'error');
   const to = sendToSelect.value || undefined;
-  try {
-    setStatus('Sending...');
-    const res = await fetch(`${relayUrl}/items/link`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, to }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Sent!', 'success');
-    document.getElementById('link-url').value = '';
-  } catch (err) {
-    setStatus(`Failed to send: ${err.message}`, 'error');
-  }
+  const btn = document.getElementById('send-link-btn');
+  await withSendingState(btn, async () => {
+    try {
+      setStatus('Sending...');
+      const res = await fetch(`${relayUrl}/items/link`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, to }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'send failed');
+      setStatus('Beamed!', 'success');
+      document.getElementById('link-url').value = '';
+    } catch (err) {
+      setStatus(`Failed to send: ${err.message}`, 'error');
+    }
+  });
 });
 
 document.getElementById('send-photo-btn').addEventListener('click', async () => {
@@ -529,6 +606,11 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
   const file = fileInput.files[0];
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!file) return setStatus('Choose a photo to send.', 'error');
+  const btn = document.getElementById('send-photo-btn');
+  await withSendingState(btn, () => sendPhoto(relayUrl, token, file, fileInput));
+});
+
+async function sendPhoto(relayUrl, token, file, fileInput) {
   try {
     setStatus('Sending photo...');
     const fd = new FormData();
@@ -540,12 +622,12 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
       body: fd,
     });
     if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Photo sent!', 'success');
+    setStatus('Photo beamed!', 'success');
     fileInput.value = '';
   } catch (err) {
     setStatus(`Failed to send photo: ${err.message}`, 'error');
   }
-});
+}
 
 // The backend accepts arbitrary text now (see relay-server/routes/items.js),
 // so content is only safe to render as a clickable href when it actually
@@ -564,7 +646,10 @@ function renderItem(item, { prepend } = { prepend: true }) {
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
   const row = document.createElement('div');
-  row.className = 'item-row';
+  // Only a genuinely live SSE arrival gets the "just landed" treatment —
+  // backlog items (initial load, reconnect catch-up) appear instantly so
+  // the animation stays meaningful instead of firing on every page visit.
+  row.className = prepend ? 'item-row land-in' : 'item-row';
 
   const time = new Date(item.createdAt).toLocaleString();
   const from = item.sourceLabel ? `from ${item.sourceLabel}` : '';
@@ -637,12 +722,17 @@ function connectReceivedFeed() {
   loadBacklog();
   const { relayUrl, token } = loadConfig();
   if (!relayUrl || !token) return;
+  setConnPill('connecting');
   eventSource = new EventSource(`${relayUrl}/events?token=${encodeURIComponent(token)}`);
   // Fires on the initial connect AND every automatic reconnect after a
   // drop — SSE has no delivery guarantee across a gap, so without re-running
   // the backlog fetch here, anything sent while disconnected would just be
   // silently missing with no indication anything went wrong.
-  eventSource.onopen = () => loadBacklog();
+  eventSource.onopen = () => {
+    setConnPill('connected');
+    loadBacklog();
+  };
+  eventSource.onerror = () => setConnPill('disconnected');
   eventSource.onmessage = (event) => {
     const item = JSON.parse(event.data);
     renderItem(item, { prepend: true });
