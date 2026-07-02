@@ -141,7 +141,14 @@ async function isTokenValid(config) {
     const res = await fetch(`${config.relayUrl}/items?since=0`, {
       headers: { Authorization: `Bearer ${config.token}` },
     });
-    return res.status !== 401;
+    // 401 = token doesn't exist on this server; 404 = the endpoint/service
+    // itself is gone (observed: our old Render deployment now 404s on
+    // everything, including /health — decommissioned, not just DB-wiped).
+    // Either means this config is dead and needs re-provisioning. Anything
+    // else (5xx, etc.) is treated as "maybe just a transient blip," per the
+    // catch block below — same reasoning, just also covering the case where
+    // the server answers but definitively isn't there anymore.
+    return res.status !== 401 && res.status !== 404;
   } catch {
     // Can't reach the relay at all right now — don't treat that as an
     // invalid token (which would abandon a perfectly good inbox); let the
@@ -156,11 +163,15 @@ async function isTokenValid(config) {
 // false if an existing, still-working inbox was reused.
 async function ensureOwnDevice() {
   const config = store.load();
-  if (config.token && config.relayUrl && (await isTokenValid(config))) {
+  // Render is retired — force migration off it even if isTokenValid()
+  // somehow still reads it as fine (e.g. a future Render response shape we
+  // haven't seen). Belt-and-suspenders alongside the 404 check above.
+  const isDeprecatedRelay = config.relayUrl && config.relayUrl.includes('onrender.com');
+  if (!isDeprecatedRelay && config.token && config.relayUrl && (await isTokenValid(config))) {
     return false;
   }
 
-  const relayUrl = config.relayUrl || DEFAULT_RELAY_URL;
+  const relayUrl = isDeprecatedRelay ? DEFAULT_RELAY_URL : config.relayUrl || DEFAULT_RELAY_URL;
   // Creates a brand new, isolated inbox and mints this desktop app's owner
   // token in one call — distinct from /pair/init+claim, which is for
   // adding another device to an inbox that already exists (see
@@ -222,9 +233,9 @@ function showWelcomeWindow() {
   const config = store.load();
   welcomeWindow = new BrowserWindow({
     width: 380,
-    // Tall enough for the intro video (up to 260px) plus the existing
-    // pairing content below it, without scrolling.
-    height: 760,
+    // Tall enough for the intro video (up to 260px), the pairing content,
+    // and the "join with a code" section below it, without scrolling.
+    height: 840,
     resizable: false,
     show: false,
     opacity: 0,
@@ -237,6 +248,7 @@ function showWelcomeWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'windows', 'pairing-preload.js'),
       // Electron already defaults to this, but pin it explicitly — a muted
       // autoplay video that silently fails to start would be a bad first
       // impression and hard to notice was even wrong.
@@ -282,7 +294,7 @@ async function showPairingWindow() {
   }
   pairingWindow = new BrowserWindow({
     width: 340,
-    height: 420,
+    height: 500,
     resizable: false,
     show: false,
     opacity: 0,
@@ -292,7 +304,11 @@ async function showPairingWindow() {
     hasShadow: true,
     roundedCorners: true,
     title: `Pair a device — ${APP_NAME}`,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'windows', 'pairing-preload.js'),
+    },
   });
   pairingWindow.setMenuBarVisibility(false);
   pairingWindow.loadFile(path.join(__dirname, 'windows', 'pairing.html'), {
@@ -372,4 +388,30 @@ function registerIpcHandlers() {
     showPairingWindow();
   });
   ipcMain.handle('hub:quit', () => app.quit());
+
+  // Lets this PC join an existing inbox by typing a code instead of always
+  // being the one that generates one — the desktop app previously had no
+  // way to become a *joining* device at all, only an owner.
+  ipcMain.handle('pairing:claim-code', async (event, code) => {
+    if (!code || typeof code !== 'string') {
+      return { ok: false, error: 'enter a code' };
+    }
+    try {
+      const res = await fetch(`${DEFAULT_RELAY_URL}/pair/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairingCode: code.trim().toUpperCase(), label: 'Desktop (Windows)' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: data.error || `relay returned ${res.status}` };
+      }
+      store.update({ relayUrl: DEFAULT_RELAY_URL, token: data.token, hasSeenWelcome: true });
+      relayClient?.stop();
+      startRelayClient();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
 }

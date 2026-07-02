@@ -60,3 +60,26 @@ function poll(code) {
 init().catch((err) => {
   setStatus(`Failed to reach relay: ${err.message}`, 'error');
 });
+
+// "Join with a code" — lets this PC become a *member* of an inbox someone
+// else already owns (typed in, no camera/QR needed), instead of only ever
+// being the one that generates a code for others to join.
+const claimBtn = document.getElementById('claim-btn');
+const claimInput = document.getElementById('claim-code-input');
+if (claimBtn && claimInput && window.beamPair) {
+  claimBtn.addEventListener('click', async () => {
+    const code = claimInput.value.trim();
+    if (!code) return setStatus('Enter a code.', 'error');
+    claimBtn.disabled = true;
+    setStatus('Joining…');
+    const result = await window.beamPair.claimCode(code);
+    if (result.ok) {
+      clearInterval(pollTimer);
+      setStatus('Joined! Closing…', 'success');
+      setTimeout(() => window.close(), 1200);
+    } else {
+      claimBtn.disabled = false;
+      setStatus(`Couldn't join: ${result.error}`, 'error');
+    }
+  });
+}

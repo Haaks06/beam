@@ -99,6 +99,34 @@
     }
     .status.success { color: var(--success); }
     .status.error { color: var(--error); }
+    .join-label { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+    .join-row { display: flex; gap: 6px; -webkit-app-region: no-drag; }
+    .join-row input {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      padding: 7px 8px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--fg);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .join-row input:focus { outline: none; border-color: var(--accent); }
+    .join-row input::placeholder { color: #4a4a4a; text-transform: none; letter-spacing: normal; }
+    .join-row button {
+      font-size: 12px;
+      padding: 7px 12px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--fg);
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .join-row button:hover { border-color: var(--accent); color: var(--accent); }
+    .join-row button:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
@@ -110,6 +138,12 @@
     <div class="code" id="code">------</div>
     <hr />
     <div class="status" id="status">Generating code…</div>
+    <hr />
+    <p class="join-label">Setting up this PC to join a different inbox instead?</p>
+    <div class="join-row">
+      <input id="claim-code-input" placeholder="Their code" maxlength="6" />
+      <button id="claim-btn">Join</button>
+    </div>
   </main>
   <script src="pairing.js"></script>
 </body>
