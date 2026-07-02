@@ -3,22 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <title>Beam</title>
+  <link rel="stylesheet" href="beam-theme.css" />
   <style>
-    :root {
-      --bg: #0a0a0a;
-      --fg: #e8e8e8;
-      --muted: #6b6b6b;
-      --line: #202020;
-      --hover: #161616;
-      --success: #6bcf9a;
-      --error: #e17a7a;
-      --accent: #2563eb;
-    }
-    * { box-sizing: border-box; }
     html, body {
       margin: 0;
       height: 100%;
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-family: var(--font-body);
       background: transparent;
       color: var(--fg);
       font-size: 13px;
@@ -26,22 +16,39 @@
       user-select: none;
     }
     body {
+      position: relative;
       display: flex;
       flex-direction: column;
       background: var(--bg);
       border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
       opacity: 0;
       transform: scale(0.97) translateY(4px);
-      animation: reveal 0.2s ease forwards;
+      animation: reveal-hub 0.2s var(--ease-out-expo) forwards;
     }
-    @keyframes reveal {
+    @keyframes reveal-hub {
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
+    body::before {
+      content: '';
+      position: absolute;
+      inset: -40% -30% auto auto;
+      width: 260px;
+      height: 260px;
+      background: url('../assets/beam-logo.png') center / cover no-repeat;
+      opacity: 0.12;
+      mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 70%);
+      -webkit-mask-image: radial-gradient(circle at 70% 30%, black 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
     /* The header is the drag handle — grab anywhere on it to move the Hub
        wherever you want; it no longer has to stay pinned to the tray. */
     header {
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -51,47 +58,29 @@
       -webkit-app-region: drag;
       cursor: grab;
     }
-    .wordmark { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; }
     .pending-badge {
       display: none;
       -webkit-app-region: no-drag;
-      background: var(--accent);
+      background: var(--beam-gradient);
       color: #fff;
       font-size: 10px;
       font-weight: 700;
       border-radius: 8px;
       padding: 1px 6px;
-      margin-left: 4px;
+      margin-left: 6px;
       cursor: pointer;
       vertical-align: middle;
     }
-    .status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
-    .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--muted);
-      transition: background 0.25s ease;
-    }
-    .status.connected .dot {
-      background: var(--success);
-      box-shadow: 0 0 0 0 rgba(107, 207, 154, 0.6);
-      animation: pulse 2s ease-out infinite;
-    }
-    .status.disconnected .dot { background: var(--error); }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(107, 207, 154, 0.5); }
-      70% { box-shadow: 0 0 0 6px rgba(107, 207, 154, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(107, 207, 154, 0); }
-    }
 
     #items {
+      position: relative;
+      z-index: 1;
       flex: 1;
       overflow-y: auto;
       min-height: 60px;
     }
     .empty {
-      padding: 28px 14px;
+      padding: 30px 14px;
       text-align: center;
       color: var(--muted);
       font-size: 12px;
@@ -104,14 +93,10 @@
       border-bottom: 1px solid var(--line);
       cursor: pointer;
       transition: background 0.15s ease;
-      animation: slideIn 0.25s ease both;
     }
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(-6px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-    .item:hover { background: var(--hover); }
-    .item .kind { color: var(--muted); font-size: 10px; width: 34px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .item.land-in { animation: land-in 0.3s var(--ease-spring) both, landed-flash 1s ease-out both; }
+    .item:hover { background: var(--surface-hover); }
+    .item .kind { color: var(--muted); font-family: var(--font-mono); font-size: 10px; width: 34px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }
     .item .content {
       flex: 1;
       overflow: hidden;
@@ -125,45 +110,67 @@
       flex-shrink: 0;
       transition: color 0.15s ease;
     }
-    .item.copied .action { color: var(--success); }
+    .item.copied .action { color: var(--violet-300); }
 
     footer {
+      position: relative;
+      z-index: 1;
       display: flex;
       border-top: 1px solid var(--line);
       flex-shrink: 0;
     }
     footer button {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
       background: none;
       border: none;
       color: var(--muted);
-      font-size: 10px;
-      padding: 10px 2px;
+      font-size: 9.5px;
+      padding: 9px 2px 8px;
       cursor: pointer;
-      font-family: inherit;
+      font-family: var(--font-body);
       border-right: 1px solid var(--line);
       transition: color 0.15s ease, background 0.15s ease;
       white-space: nowrap;
     }
+    footer button svg { width: 15px; height: 15px; flex-shrink: 0; }
     footer button:last-child { border-right: none; }
-    footer button:hover { color: var(--fg); background: var(--hover); }
-    footer button:active { color: var(--accent); }
+    footer button:hover { color: var(--fg); background: var(--surface-hover); }
+    footer button:active { color: var(--violet-300); }
   </style>
 </head>
 <body>
   <header>
-    <span class="wordmark">Beam <span id="pending-badge" class="pending-badge"></span></span>
-    <span class="status" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
+    <span class="wordmark"><img src="../assets/icon-48.png" alt="" width="18" height="18" />Beam<span id="pending-badge" class="pending-badge"></span></span>
+    <span class="signal" id="status"><span class="dot"></span><span id="status-text">connecting…</span></span>
   </header>
   <div id="items">
-    <div class="empty">Nothing shared yet</div>
+    <div class="empty">Nothing beamed yet</div>
   </div>
   <footer>
-    <button id="pair-btn" title="Add another of your own devices">Pair device</button>
-    <button id="web-panel-btn" title="Manage friends, send from this PC">Web</button>
-    <button id="photos-btn">Photos</button>
-    <button id="links-btn">Links</button>
-    <button id="quit-btn">Quit</button>
+    <button id="pair-btn" title="Add another of your own devices">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="9" height="16" rx="2"></rect><path d="M18 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-2"></path></svg>
+      Pair
+    </button>
+    <button id="web-panel-btn" title="Manage friends, send from this PC">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"></path></svg>
+      Web
+    </button>
+    <button id="photos-btn" title="Open the photos folder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.5"></circle><path d="m21 15-5-5L5 20"></path></svg>
+      Photos
+    </button>
+    <button id="links-btn" title="Open the links folder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.5"></path><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.36-1.36"></path></svg>
+      Links
+    </button>
+    <button id="quit-btn" title="Quit Beam">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+      Quit
+    </button>
   </footer>
   <script src="hub.js"></script>
 </body>

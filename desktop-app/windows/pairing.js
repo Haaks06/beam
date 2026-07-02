@@ -6,6 +6,7 @@ const isFirstRun = params.get('firstRun') === '1';
 const qrImg = document.getElementById('qr');
 const codeEl = document.getElementById('code');
 const statusEl = document.getElementById('status');
+const frameEl = document.getElementById('frame');
 
 let pollTimer = null;
 
@@ -32,6 +33,7 @@ async function init() {
   qrImg.src = data.qrDataUrl;
   qrImg.onload = () => qrImg.classList.add('loaded');
   codeEl.textContent = data.pairingCode;
+  frameEl?.classList.add('active');
   setStatus('Waiting for a device to scan or enter this code…');
   poll(data.pairingCode);
 }
@@ -43,6 +45,9 @@ function poll(code) {
       const data = await res.json();
       if (data.status === 'claimed') {
         clearInterval(pollTimer);
+        // Lock the viewfinder onto the beam-bright color before the window
+        // closes — a beat of "landed" feedback rather than an abrupt cut.
+        frameEl?.classList.add('locked');
         if (isFirstRun) {
           setStatus("You're all set! Beam will keep running quietly — look for its icon near your clock.", 'success');
           setTimeout(() => window.close(), 4000);
