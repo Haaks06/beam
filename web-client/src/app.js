@@ -1,3 +1,5 @@
+import './styles.css';
+
 const DB_NAME = 'share-to-pc';
 const STORE_NAME = 'config';
 
@@ -73,6 +75,12 @@ const pendingList = document.getElementById('pending-list');
 const friendsEmpty = document.getElementById('friends-empty');
 const friendsList = document.getElementById('friends-list');
 const sendToSelect = document.getElementById('send-to-select');
+const tabNav = document.getElementById('tab-nav');
+const tabIndicator = document.getElementById('tab-indicator');
+const connPill = document.getElementById('conn-pill');
+const connPillText = document.getElementById('conn-pill-text');
+const inviteFrame = document.getElementById('invite-frame');
+const friendInviteFrame = document.getElementById('friend-invite-frame');
 
 let eventSource = null;
 let invitePollTimer = null;
@@ -89,13 +97,21 @@ function setStatus(message, variant) {
 // instead of every section being visible at once with no hierarchy.
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabPanels = { home: document.getElementById('tab-home'), devices: document.getElementById('tab-devices'), friends: document.getElementById('tab-friends') };
+function positionTabIndicator() {
+  const active = document.querySelector('.tab-btn.active');
+  if (!active || !tabIndicator) return;
+  tabIndicator.style.left = `${active.offsetLeft}px`;
+  tabIndicator.style.width = `${active.offsetWidth}px`;
+}
 function activateTab(name) {
   for (const btn of tabButtons) btn.classList.toggle('active', btn.dataset.tab === name);
   for (const [key, panel] of Object.entries(tabPanels)) panel.style.display = key === name ? 'block' : 'none';
+  positionTabIndicator();
 }
 for (const btn of tabButtons) {
   btn.addEventListener('click', () => activateTab(btn.dataset.tab));
 }
+window.addEventListener('resize', positionTabIndicator);
 
 // Once paired, the "get started" form has done its job — sweep it away so
 // the page is just the tabbed app shell, not a form you have to look past.
@@ -113,9 +129,22 @@ function refreshPairedState() {
   if (paired) {
     connectReceivedFeed();
     loadConnections();
+    // Layout only settles once the shell is actually visible, so the
+    // indicator's first position has to wait a frame rather than being
+    // computed against a still-collapsed (0-width) nav.
+    requestAnimationFrame(positionTabIndicator);
   } else {
     disconnectReceivedFeed();
+    setConnPill('disconnected');
   }
+}
+
+function setConnPill(state) {
+  if (!connPill) return;
+  connPill.hidden = false;
+  connPill.classList.remove('connected', 'connecting', 'disconnected');
+  connPill.classList.add(state);
+  connPillText.textContent = state === 'connected' ? 'live' : state === 'connecting' ? 'connecting…' : 'offline';
 }
 
 repairLink.addEventListener('click', () => {
@@ -153,7 +182,10 @@ function prefillRelayUrl() {
 }
 
 document.getElementById('start-btn').addEventListener('click', async () => {
+  const startBtn = document.getElementById('start-btn');
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+  startBtn.classList.add('sending');
+  startBtn.disabled = true;
   try {
     setStatus('Starting...');
     const res = await fetch(`${relayUrl}/inbox`, {
@@ -171,6 +203,9 @@ document.getElementById('start-btn').addEventListener('click', async () => {
     await showInvite();
   } catch (err) {
     setStatus(`Couldn't start: ${err.message}`, 'error');
+  } finally {
+    startBtn.classList.remove('sending');
+    startBtn.disabled = false;
   }
 });
 
@@ -208,7 +243,11 @@ async function showInvite() {
     if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
     const data = await res.json();
     inviteCodeEl.textContent = data.pairingCode;
+    inviteQrEl.classList.remove('loaded');
+    inviteQrEl.onload = () => inviteQrEl.classList.add('loaded');
     inviteQrEl.src = data.qrDataUrl;
+    inviteFrame?.classList.remove('locked');
+    inviteFrame?.classList.add('active');
     inviteSection.style.display = 'block';
     pollInvite(relayUrl, data.pairingCode);
   } catch (err) {
@@ -224,8 +263,14 @@ function pollInvite(relayUrl, code) {
       const data = await res.json();
       if (data.status === 'claimed') {
         clearInterval(invitePollTimer);
-        inviteSection.style.display = 'none';
+        // A beat of "locked on" feedback (frame + code flash to the beam's
+        // bright core color) before the section disappears, rather than an
+        // abrupt cut straight to gone.
+        inviteFrame?.classList.add('locked');
         setStatus('Device paired!', 'success');
+        setTimeout(() => {
+          inviteSection.style.display = 'none';
+        }, 700);
       }
     } catch {
       // Transient network hiccup — keep polling silently.
@@ -328,7 +373,10 @@ document.getElementById('invite-friend-btn').addEventListener('click', async () 
     if (!res.ok) throw new Error((await res.json()).error || 'failed to create invite');
     const data = await res.json();
     friendInviteCodeEl.textContent = data.connectCode;
+    friendInviteQrEl.classList.remove('loaded');
+    friendInviteQrEl.onload = () => friendInviteQrEl.classList.add('loaded');
     friendInviteQrEl.src = data.qrDataUrl;
+    friendInviteFrame?.classList.add('active');
     friendInviteOverlay.style.display = 'block';
     pollFriendInvite();
   } catch (err) {
@@ -371,33 +419,53 @@ document.getElementById('add-friend-btn').addEventListener('click', async () => 
   }
 });
 
+// Toggles the beam-sweep-while-sending affordance on a button — the button
+// itself visualizes "beaming" for the duration of the request, instead of
+// only the text changing to "Sending...".
+function withSendingState(btn, fn) {
+  btn.classList.add('sending');
+  btn.disabled = true;
+  return fn().finally(() => {
+    btn.classList.remove('sending');
+    btn.disabled = false;
+  });
+}
+
 document.getElementById('send-link-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('send-link-btn');
   const { relayUrl, token } = loadConfig();
   const url = document.getElementById('link-url').value.trim();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!url) return setStatus('Enter something to send.', 'error');
   const to = sendToSelect.value || undefined;
-  try {
-    setStatus('Sending...');
-    const res = await fetch(`${relayUrl}/items/link`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, to }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Sent!', 'success');
-    document.getElementById('link-url').value = '';
-  } catch (err) {
-    setStatus(`Failed to send: ${err.message}`, 'error');
-  }
+  await withSendingState(btn, async () => {
+    try {
+      setStatus('Sending...');
+      const res = await fetch(`${relayUrl}/items/link`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, to }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'send failed');
+      setStatus('Beamed!', 'success');
+      document.getElementById('link-url').value = '';
+    } catch (err) {
+      setStatus(`Failed to send: ${err.message}`, 'error');
+    }
+  });
 });
 
 document.getElementById('send-photo-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('send-photo-btn');
   const { relayUrl, token } = loadConfig();
   const fileInput = document.getElementById('photo-file');
   const file = fileInput.files[0];
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!file) return setStatus('Choose a photo to send.', 'error');
+  await withSendingState(btn, () => sendPhoto(relayUrl, token, file, fileInput));
+});
+
+async function sendPhoto(relayUrl, token, file, fileInput) {
   try {
     setStatus('Sending photo...');
     const fd = new FormData();
@@ -409,12 +477,12 @@ document.getElementById('send-photo-btn').addEventListener('click', async () => 
       body: fd,
     });
     if (!res.ok) throw new Error((await res.json()).error || 'send failed');
-    setStatus('Photo sent!', 'success');
+    setStatus('Photo beamed!', 'success');
     fileInput.value = '';
   } catch (err) {
     setStatus(`Failed to send photo: ${err.message}`, 'error');
   }
-});
+}
 
 // The backend accepts arbitrary text now (see relay-server/routes/items.js),
 // so content is only safe to render as a clickable href when it actually
@@ -433,7 +501,10 @@ function renderItem(item, { prepend } = { prepend: true }) {
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
   const row = document.createElement('div');
-  row.className = 'item-row';
+  // Only a genuinely live SSE arrival gets the "just landed" treatment —
+  // backlog items (initial load, reconnect catch-up) appear instantly so
+  // the animation stays meaningful instead of firing on every page visit.
+  row.className = prepend ? 'item-row land-in' : 'item-row';
 
   const time = new Date(item.createdAt).toLocaleString();
   const from = item.sourceLabel ? `from ${item.sourceLabel}` : '';
@@ -506,12 +577,17 @@ function connectReceivedFeed() {
   loadBacklog();
   const { relayUrl, token } = loadConfig();
   if (!relayUrl || !token) return;
+  setConnPill('connecting');
   eventSource = new EventSource(`${relayUrl}/events?token=${encodeURIComponent(token)}`);
   // Fires on the initial connect AND every automatic reconnect after a
   // drop — SSE has no delivery guarantee across a gap, so without re-running
   // the backlog fetch here, anything sent while disconnected would just be
   // silently missing with no indication anything went wrong.
-  eventSource.onopen = () => loadBacklog();
+  eventSource.onopen = () => {
+    setConnPill('connected');
+    loadBacklog();
+  };
+  eventSource.onerror = () => setConnPill('disconnected');
   eventSource.onmessage = (event) => {
     const item = JSON.parse(event.data);
     renderItem(item, { prepend: true });
