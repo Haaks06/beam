@@ -32,10 +32,6 @@ app.whenReady().then(async () => {
   // default behavior of quitting once every window closes on Windows/Linux.
   app.on('window-all-closed', () => {});
 
-  // Computed before ensureOwnDevice() mutates the store, since that call is
-  // what would otherwise make "do we already have a token" ambiguous.
-  const isFirstRun = !store.load().token;
-
   const setStatus = (next) => {
     status = next;
     rebuildMenu?.(LINKS_DIR, PHOTOS_DIR);
@@ -51,18 +47,54 @@ app.whenReady().then(async () => {
   rebuildMenu = trayHandle.rebuildMenu;
   rebuildMenu(LINKS_DIR, PHOTOS_DIR);
 
-  await ensureOwnDevice();
+  let needsPairing;
+  try {
+    needsPairing = await ensureOwnDevice();
+  } catch (err) {
+    // Leaves config.token unset, so the next launch retries from scratch
+    // instead of getting stuck with a half-initialized, unusable state.
+    console.error('failed to reach relay on startup', err);
+    setStatus('cannot reach relay');
+    notify(`${APP_NAME} can't connect`, `Could not reach the relay at startup: ${err.message}. Quit and reopen ${APP_NAME} once you're back online.`);
+    return;
+  }
 
-  if (isFirstRun) {
+  if (needsPairing) {
     showWelcomeWindow(() => startRelayClient(setStatus));
   } else {
     startRelayClient(setStatus);
   }
 });
 
+// Render's free tier disk is ephemeral (see docs/HOSTING.md) — a redeploy
+// or instance recycle can wipe the relay's database, silently invalidating
+// every previously-issued token including this app's own. Without this
+// check, a stale token would make every subsequent call (pairing, item
+// sync) fail with 401 forever, since ensureOwnDevice() only ever looks at
+// whether a token is *stored*, not whether it still *works*.
+async function isTokenValid(config) {
+  try {
+    const res = await fetch(`${config.relayUrl}/items?since=0`, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+    return res.status !== 401;
+  } catch {
+    // Can't reach the relay at all right now — don't treat that as an
+    // invalid token (which would abandon a perfectly good inbox); let the
+    // normal connect-failure handling in app.whenReady() take over instead.
+    return true;
+  }
+}
+
+// Returns true if a brand new inbox was minted (first run, or the old one
+// was invalidated — e.g. by a Render free-tier disk wipe), meaning no
+// device is paired to it yet and the welcome/QR flow should run again;
+// false if an existing, still-working inbox was reused.
 async function ensureOwnDevice() {
   const config = store.load();
-  if (config.token && config.relayUrl) return config;
+  if (config.token && config.relayUrl && (await isTokenValid(config))) {
+    return false;
+  }
 
   const relayUrl = config.relayUrl || DEFAULT_RELAY_URL;
   // Creates a brand new, isolated inbox and mints this desktop app's owner
@@ -74,9 +106,12 @@ async function ensureOwnDevice() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ label: 'Desktop (Windows)' }),
   });
+  if (!res.ok) {
+    throw new Error(`relay returned ${res.status}`);
+  }
   const data = await res.json();
-
-  return store.update({ relayUrl, token: data.token });
+  store.update({ relayUrl, token: data.token });
+  return true;
 }
 
 function startRelayClient(setStatus) {
@@ -135,6 +170,10 @@ function notify(title, body) {
 
 function showPairingWindow() {
   const config = store.load();
+  if (!config.token || !config.relayUrl) {
+    notify(`${APP_NAME} isn't connected`, 'Quit and reopen the app once you have a network connection, then try again.');
+    return;
+  }
   if (pairingWindow) {
     pairingWindow.focus();
     return;

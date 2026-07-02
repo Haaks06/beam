@@ -23,6 +23,12 @@ async function init() {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
+  if (!res.ok) {
+    // Most likely cause: the relay's database was reset (e.g. a Render
+    // free-tier disk wipe) and this app's token no longer exists there.
+    // Restarting mints a fresh one — see main.js's isTokenValid check.
+    throw new Error(data.error === 'invalid token' ? `${data.error} — try quitting and reopening the app` : data.error || `relay returned ${res.status}`);
+  }
   qrImg.src = data.qrDataUrl;
   codeEl.textContent = data.pairingCode;
   setStatus('Waiting for a device to scan or enter this code…');
