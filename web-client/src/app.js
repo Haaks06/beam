@@ -340,6 +340,8 @@ function showPairedAnimation() {
   });
 }
 
+const BURN_OUT_MS = 550;
+
 function enterEndedState() {
   clearConfig();
   disconnectReceivedFeed();
@@ -348,7 +350,20 @@ function enterEndedState() {
   p2pController?.teardown();
   p2pController = null;
   if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
-  showOnly('ended');
+
+  // Only play the dissolve when there's actually an active session visibly
+  // burning away -- a 401 hit while still on the start/invite screen (e.g.
+  // an already-expired token from a stale reload) has nothing on screen to
+  // animate, so just cut straight to the ended screen.
+  if (appShell.style.display === 'block') {
+    appShell.classList.add('burn-out');
+    setTimeout(() => {
+      appShell.classList.remove('burn-out');
+      showOnly('ended');
+    }, BURN_OUT_MS);
+  } else {
+    showOnly('ended');
+  }
 }
 
 function formatRemaining(ms) {
