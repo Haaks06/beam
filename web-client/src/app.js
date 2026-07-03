@@ -205,6 +205,7 @@ function enterActiveState() {
   showOnly('active');
   activateTab(lastIntent);
   requestAnimationFrame(positionTabIndicator);
+  sseRetryDelay = SSE_BASE_RETRY_MS; // fresh session, fresh backoff
   connectReceivedFeed();
 
   clearInterval(countdownTimer);
@@ -692,15 +693,31 @@ function setConnPill(state) {
   connPill.classList.add(state);
 }
 
+// -- SSE reconnect: two independent layers -------------------------------
+// 1) Exponential backoff, taken over from EventSource's own native retry
+//    (which is a fixed, largely opaque interval, not exponential, and not
+//    observable from here). onerror closes the dead connection explicitly
+//    and schedules the next attempt itself, backing off 1s -> 2s -> 4s...
+//    capped at 30s, so a genuinely down network doesn't hammer the relay
+//    while a brief blip still recovers fast. Reset to the base delay
+//    happens in exactly two places: a successful onopen, and the top of
+//    enterActiveState() for a brand-new session (so a previous session's
+//    backoff never leaks into the next one).
+// 2) A staleness watchdog for the OTHER failure mode this exists for: a
+//    connection that never errors at all, just silently stops delivering
+//    data — the classic "OS suspended the socket during sleep" case.
+//    EventSource has no way to notice that on its own since nothing
+//    actually failed at the API level, so this checks elapsed time since
+//    the last message/ping instead of waiting on an error that may never
+//    come.
+const SSE_BASE_RETRY_MS = 1000;
+const SSE_MAX_RETRY_MS = 30000;
+let sseRetryDelay = SSE_BASE_RETRY_MS;
+let sseRetryTimer = null;
+
 // Just over 2x the relay's 15s keep-alive ping (see relay-server/routes/
 // stream.js) — a couple of missed pings from ordinary scheduling jitter
 // don't trigger this, but a connection that's gone properly silent does.
-// A laptop/phone waking from sleep is the main case this exists for: the OS
-// can silently kill the underlying TCP socket while suspended, and
-// EventSource's own error/retry handling doesn't always notice promptly (or
-// at all) since nothing actually failed loudly at the browser API level —
-// it's just gone quiet. Rebuilding the connection outright once it's been
-// quiet too long is more reliable than waiting on the browser to notice.
 const SSE_STALE_MS = 40000;
 let lastSseActivityAt = 0;
 let sseWatchdog = null;
@@ -722,6 +739,12 @@ function checkSseHealth() {
   }
 }
 
+function scheduleSseReconnect() {
+  clearTimeout(sseRetryTimer);
+  sseRetryTimer = setTimeout(connectReceivedFeed, sseRetryDelay);
+  sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX_RETRY_MS);
+}
+
 function connectReceivedFeed() {
   disconnectReceivedFeed();
   loadBacklog();
@@ -737,9 +760,20 @@ function connectReceivedFeed() {
   eventSource.onopen = () => {
     setConnPill('connected');
     noteSseActivity();
+    sseRetryDelay = SSE_BASE_RETRY_MS; // a real connection resets the backoff
     loadBacklog();
   };
-  eventSource.onerror = () => setConnPill('disconnected');
+  eventSource.onerror = () => {
+    setConnPill('disconnected');
+    // Take over reconnection ourselves — close the dead connection
+    // explicitly so the browser's own native auto-retry never also fires,
+    // which would otherwise race our own scheduled attempt below.
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    scheduleSseReconnect();
+  };
   eventSource.addEventListener('ping', noteSseActivity);
   eventSource.onmessage = (event) => {
     noteSseActivity();
@@ -778,6 +812,13 @@ function connectReceivedFeed() {
 function disconnectReceivedFeed() {
   clearInterval(sseWatchdog);
   sseWatchdog = null;
+  // Deliberately does NOT reset sseRetryDelay — this runs as the first line
+  // of connectReceivedFeed() too (cleaning up before opening a new
+  // connection), and a backoff-triggered retry needs its escalated delay
+  // to survive that inner call. The delay only resets on a real onopen or
+  // at the top of enterActiveState() for a brand-new session.
+  clearTimeout(sseRetryTimer);
+  sseRetryTimer = null;
   if (eventSource) {
     eventSource.close();
     eventSource = null;

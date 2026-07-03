@@ -23,6 +23,17 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 let tray;
 let mainWindow;
 let resizeTimer;
+let hiddenSince = null;
+
+// Defense in depth, on top of the real fix (the exponential-backoff +
+// staleness watchdog in web-client/src/app.js, which is what actually
+// keeps the SSE connection alive or promptly reconnects it): if the
+// window sat hidden long enough that ANYTHING else about the page's state
+// might have gone stale — not just the SSE connection — a full reload is
+// cheap insurance. Deliberately much longer than the web-client's own 40s
+// staleness threshold, since the real fix should already have recovered
+// the connection well before this ever fires; this is only a backstop.
+const HIDDEN_RELOAD_THRESHOLD_MS = 3 * 60 * 1000;
 
 // Matches web-client's showOnly() section names. The landing screen is a
 // single button and doesn't need the same vertical space as the connect
@@ -118,7 +129,20 @@ function createMainWindow() {
   // page ever finding out promptly. Telling it to recheck the instant the
   // window is actually shown again means that's already fixed by the time
   // anyone's looking, rather than needing a full quit-and-relaunch.
-  mainWindow.on('show', () => mainWindow.webContents.send('resume-check'));
+  mainWindow.on('hide', () => {
+    hiddenSince = Date.now();
+  });
+  mainWindow.on('show', () => {
+    // Defense in depth (see HIDDEN_RELOAD_THRESHOLD_MS above): a full
+    // reload if it's been hidden long enough, on top of the targeted
+    // resume-check that handles the common case cheaply.
+    if (hiddenSince && Date.now() - hiddenSince > HIDDEN_RELOAD_THRESHOLD_MS) {
+      mainWindow.webContents.reload();
+    } else {
+      mainWindow.webContents.send('resume-check');
+    }
+    hiddenSince = null;
+  });
 }
 
 function toggleMainWindow() {
@@ -160,10 +184,15 @@ app.whenReady().then(() => {
 
   // The other half of the "stale after being idle" fix, for the case the
   // window was actually still visible when the machine slept — 'show'
-  // above only fires on a visibility transition, which a already-visible
-  // window waking up alongside the OS doesn't trigger.
+  // above only fires on a visibility transition, which an already-visible
+  // window waking up alongside the OS doesn't trigger. A real sleep/wake
+  // cycle reliably kills network connections regardless of how long it
+  // slept, so this is an unconditional reload rather than the
+  // duration-gated one on 'show' — a full reload already re-establishes
+  // the SSE connection from scratch, so there's no need to also send
+  // resume-check.
   powerMonitor.on('resume', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resume-check');
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
   });
 
   // A live SSE arrival in the shared web-client page (web-client/src/app.js)
