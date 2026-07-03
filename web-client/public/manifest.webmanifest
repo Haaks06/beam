@@ -2,7 +2,7 @@
   "name": "Beam",
   "short_name": "Beam",
   "description": "Beam links and photos straight to your computer",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#050308",
   "theme_color": "#050308",

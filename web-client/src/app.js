@@ -103,6 +103,12 @@ const connPill = document.getElementById('conn-pill');
 let eventSource = null;
 let invitePollTimer = null;
 let countdownTimer = null;
+// Bumped every time we (re-)enter the invite flow or leave it (Cancel,
+// pairing completing, page reload's own refreshState() call, etc). A
+// /pair/init response's continuation only applies its result if this still
+// matches the value captured when THAT specific request started — see
+// enterInviteState()'s "stale invite" guard for the race this closes.
+let inviteGeneration = 0;
 // There's no upfront "I want to send" / "I want to receive" choice anymore
 // — connecting always shows your own QR AND a code-entry field at once,
 // whichever side of the pairing actually completes it first. This only
@@ -151,6 +157,12 @@ function showOnly(section) {
 // everything; back to start). ---
 
 function enterStartState() {
+  // Invalidate any /pair/init still in flight from an invite we're now
+  // leaving (Cancel, "Start over", etc.) — without this, that request can
+  // still resolve later and silently repopulate the (currently hidden)
+  // invite code/QR and restart the poll interval in the background, purely
+  // because nothing ever told it to stand down.
+  inviteGeneration++;
   disconnectReceivedFeed();
   clearInterval(invitePollTimer);
   clearInterval(countdownTimer);
@@ -212,14 +224,47 @@ function enterActiveState() {
 async function enterInviteState() {
   const { relayUrl, token } = loadConfig();
   if (!token) return enterStartState();
+  // Claim this invite attempt's own generation number *before* the request
+  // goes out. enterInviteState() can end up in flight more than once close
+  // together — e.g. Cancel then Connect again fast, or reloading the page
+  // while already mid-invite (refreshState() calls this too, independently
+  // of Connect's own button-disabled guard) — and fetches don't necessarily
+  // resolve in the order they were sent. Without this, a slower/older
+  // request's .then can land after a newer one already rendered a fresh
+  // code + QR, and unconditionally overwrite it: the code text flips to the
+  // stale one, the QR image loses its "loaded" class (instantly fading back
+  // to invisible mid-transition, which is the actual "QR doesn't show up"
+  // symptom) before reloading with the wrong/abandoned code, and the poll
+  // interval gets redirected to that dead code — so pairing then silently
+  // never completes. Comparing against the live counter after the await
+  // lets any response whose invite has since been superseded discard itself
+  // instead.
+  const myGeneration = ++inviteGeneration;
   showOnly('invite');
   try {
     const res = await fetch(`${relayUrl}/pair/init`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (myGeneration !== inviteGeneration) return; // superseded — discard this stale response
+    // A 401 here means the relay no longer recognizes this token — most
+    // often because it minted an invite, never got paired, and the relay's
+    // own abandoned-session sweep (see relay-server/lib/sessionCleanup.js,
+    // 10-minute TTL) deleted the device row before this same page/window got
+    // reopened. Without this, refreshState() keeps re-entering this exact
+    // function with the same dead token on every load, showing a
+    // permanently blank invite (no code, no QR) forever — the token is
+    // dead and no amount of retrying fixes that, so clear it and let the
+    // user start clean instead of getting stuck.
+    if (res.status === 401) {
+      clearConfig();
+      enterStartState();
+      setStatus('That connection expired — click Connect to start a new one.', 'error');
+      return;
+    }
     if (!res.ok) throw new Error(await parseErrorMessage(res, 'failed to create invite'));
     const data = await res.json();
+    if (myGeneration !== inviteGeneration) return; // superseded — discard this stale response
     inviteCodeEl.textContent = data.pairingCode;
     inviteQrEl.classList.remove('loaded');
     inviteQrEl.onload = () => inviteQrEl.classList.add('loaded');
@@ -228,6 +273,7 @@ async function enterInviteState() {
     inviteFrame?.classList.add('active');
     pollInvite(relayUrl, data.pairingCode);
   } catch (err) {
+    if (myGeneration !== inviteGeneration) return; // superseded — don't show a stale error either
     setStatus(`Couldn't create invite: ${err.message}`, 'error');
   }
 }
@@ -342,7 +388,12 @@ let scanRafId = null;
 // instead of prompting properly. Scanning still works fine in an actual
 // mobile/desktop browser, where this stays available.
 const isDesktopApp = !!window.beamNative;
-const canScanQr = !isDesktopApp && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+// ?src=extension is set by chrome-extension/background.js when it opens
+// this page in its popup window — a laptop webcam scanning a phone's QR
+// isn't a real flow there, so the button hides in that context too, same
+// reasoning as the desktop app above. Phones/other browsers keep it.
+const isExtensionPopup = new URLSearchParams(window.location.search).get('src') === 'extension';
+const canScanQr = !isDesktopApp && !isExtensionPopup && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 if (!canScanQr && scanQrBtn) scanQrBtn.style.display = 'none';
 
 function stopQrScan() {
@@ -370,6 +421,25 @@ function scanVideoFrame() {
   scanRafId = requestAnimationFrame(scanVideoFrame);
 }
 
+// Pairing links come in two shapes: the path-based one relay-server/routes/
+// pair.js generates now (e.g. https://beamsend.com/ABC123 — relay is just
+// the link's own origin, since one server always serves both the API and
+// this page) and the older ?relay=&code= query-string form, kept so any
+// link/QR already in circulation from before this change still works. Both
+// the camera scanner and cold-load URL handling need the same parsing, so
+// it lives here once.
+const PAIRING_CODE_RE = /^[A-Za-z0-9]{6}$/;
+function parsePairingLink(url) {
+  const relayParam = url.searchParams.get('relay');
+  const codeParam = url.searchParams.get('code');
+  if (relayParam && codeParam) return { relay: relayParam, code: codeParam };
+
+  const pathCode = url.pathname.replace(/^\/+/, '');
+  if (PAIRING_CODE_RE.test(pathCode)) return { relay: url.origin, code: pathCode };
+
+  return null;
+}
+
 function handleScannedQr(text) {
   stopQrScan();
   inviteSection.style.display = 'block';
@@ -380,16 +450,15 @@ function handleScannedQr(text) {
   } catch {
     return setStatus("That QR code doesn't look like a Beam pairing code.", 'error');
   }
-  const relay = parsed.searchParams.get('relay');
-  const code = parsed.searchParams.get('code');
-  if (!relay || !code) {
+  const link = parsePairingLink(parsed);
+  if (!link) {
     return setStatus("That QR code doesn't look like a Beam pairing code.", 'error');
   }
 
-  relayUrlInput.value = relay;
-  pairingCodeInput.value = code.toUpperCase();
+  relayUrlInput.value = link.relay;
+  pairingCodeInput.value = link.code.toUpperCase();
   setStatus('Pairing...');
-  claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase()).catch((err) =>
+  claimPairingCode(link.relay.replace(/\/+$/, ''), link.code.toUpperCase()).catch((err) =>
     setStatus(`Pairing failed: ${err.message}`, 'error')
   );
 }
@@ -441,26 +510,26 @@ document.getElementById('invite-cancel-btn').addEventListener('click', () => {
 repairLink.addEventListener('click', () => enterStartState());
 document.getElementById('restart-btn').addEventListener('click', () => enterStartState());
 
-// Scanning another device's pairing QR opens this page with ?relay=&code=
-// attached — pairs immediately rather than just prefilling the form, so
-// scanning is the whole interaction on the joining device.
+// Opening another device's pairing link (path-based /ABC123, or the older
+// ?relay=&code=) pairs immediately rather than just prefilling the form, so
+// opening/scanning it is the whole interaction on the joining device.
 async function claimFromQrScan() {
-  const params = new URLSearchParams(window.location.search);
-  const relay = params.get('relay');
-  const code = params.get('code');
-  if (!relay || !code) return false;
+  const link = parsePairingLink(new URL(window.location.href));
+  if (!link) return false;
+  const { relay, code } = link;
 
-  // The scanned link's ?relay=&code= stays in the URL after a successful
-  // pairing (nothing ever cleared it) — refreshing the phone re-ran this
-  // exact function every time, re-claiming an already-used code, which
-  // fails and wipes out the perfectly valid session that was already
-  // active. This is "refreshing loses the connection." Strip the params
-  // unconditionally, before anything else, so no later reload can retrigger
-  // this regardless of which branch below runs.
-  window.history.replaceState(null, '', window.location.pathname);
+  // Either link shape stays in the URL after a successful pairing (nothing
+  // ever cleared it) — refreshing the phone re-ran this exact function every
+  // time, re-claiming an already-used code, which fails and wipes out the
+  // perfectly valid session that was already active. This is "refreshing
+  // loses the connection." Strip it unconditionally, before anything else,
+  // so no later reload can retrigger this regardless of which branch below
+  // runs. Always back to "/", not just stripping the query string — the
+  // path-based form carries the code IN the path itself.
+  window.history.replaceState(null, '', '/');
 
   // Also don't attempt to re-claim if this device is already mid-session —
-  // covers the case where the params somehow survive (e.g. a bookmarked
+  // covers the case where the link somehow survives (e.g. a bookmarked
   // link) while a still-valid token already exists in localStorage.
   const existing = loadConfig();
   if (existing.token && existing.expiresAt && existing.expiresAt > Date.now()) {
@@ -505,6 +574,37 @@ function isHttpUrl(value) {
   }
 }
 
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+// Matches the checkmark already used for pair-success-badge elsewhere on
+// this page, so "copied" reads as the same confirmation language.
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"></path></svg>';
+const DOWNLOAD_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
+
+function makeCopyButton(text) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-btn copy-btn';
+  btn.title = 'Copy';
+  btn.setAttribute('aria-label', 'Copy to clipboard');
+  btn.innerHTML = COPY_ICON;
+  let revertTimer = null;
+  btn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(text).then(() => {
+      clearTimeout(revertTimer);
+      btn.innerHTML = CHECK_ICON;
+      btn.classList.add('copied');
+      revertTimer = setTimeout(() => {
+        btn.innerHTML = COPY_ICON;
+        btn.classList.remove('copied');
+      }, 1500);
+    });
+  });
+  return btn;
+}
+
 function renderItem(item, { prepend } = { prepend: true }) {
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
@@ -518,16 +618,24 @@ function renderItem(item, { prepend } = { prepend: true }) {
   const from = item.sourceLabel ? `from ${item.sourceLabel}` : '';
 
   if (item.type === 'link' && isHttpUrl(item.content)) {
+    const contentRow = document.createElement('div');
+    contentRow.className = 'item-content-row';
     const a = document.createElement('a');
     a.href = item.content;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.textContent = item.content;
-    row.appendChild(a);
+    contentRow.appendChild(a);
+    contentRow.appendChild(makeCopyButton(item.content));
+    row.appendChild(contentRow);
   } else if (item.type === 'link') {
+    const contentRow = document.createElement('div');
+    contentRow.className = 'item-content-row';
     const span = document.createElement('span');
     span.textContent = item.content;
-    row.appendChild(span);
+    contentRow.appendChild(span);
+    contentRow.appendChild(makeCopyButton(item.content));
+    row.appendChild(contentRow);
   } else if (item.type === 'photo') {
     const fileUrl = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
     const img = document.createElement('img');
@@ -537,8 +645,10 @@ function renderItem(item, { prepend } = { prepend: true }) {
     const dl = document.createElement('a');
     dl.href = fileUrl;
     dl.download = '';
-    dl.className = 'download';
-    dl.textContent = 'Download';
+    dl.className = 'icon-btn download-btn';
+    dl.title = 'Download';
+    dl.setAttribute('aria-label', 'Download photo');
+    dl.innerHTML = DOWNLOAD_ICON;
     row.appendChild(dl);
   }
 
@@ -582,12 +692,43 @@ function setConnPill(state) {
   connPill.classList.add(state);
 }
 
+// Just over 2x the relay's 15s keep-alive ping (see relay-server/routes/
+// stream.js) — a couple of missed pings from ordinary scheduling jitter
+// don't trigger this, but a connection that's gone properly silent does.
+// A laptop/phone waking from sleep is the main case this exists for: the OS
+// can silently kill the underlying TCP socket while suspended, and
+// EventSource's own error/retry handling doesn't always notice promptly (or
+// at all) since nothing actually failed loudly at the browser API level —
+// it's just gone quiet. Rebuilding the connection outright once it's been
+// quiet too long is more reliable than waiting on the browser to notice.
+const SSE_STALE_MS = 40000;
+let lastSseActivityAt = 0;
+let sseWatchdog = null;
+
+function noteSseActivity() {
+  lastSseActivityAt = Date.now();
+}
+
+// Shared by the periodic watchdog below and the "check right now" triggers
+// (tab becoming visible again, desktop app window shown from the tray or
+// the system waking from sleep — see the visibilitychange listener and
+// window.beamNative.onResumeCheck near the bottom of this file) so a stale
+// connection gets caught immediately when the user actually looks at the
+// screen again, not just whenever the next periodic tick happens to land.
+function checkSseHealth() {
+  if (!eventSource) return;
+  if (Date.now() - lastSseActivityAt > SSE_STALE_MS) {
+    connectReceivedFeed();
+  }
+}
+
 function connectReceivedFeed() {
   disconnectReceivedFeed();
   loadBacklog();
   const { relayUrl, token } = loadConfig();
   if (!relayUrl || !token) return;
   setConnPill('connecting');
+  noteSseActivity();
   eventSource = new EventSource(`${relayUrl}/events?token=${encodeURIComponent(token)}`);
   // Fires on the initial connect AND every automatic reconnect after a
   // drop — SSE has no delivery guarantee across a gap, so without re-running
@@ -595,10 +736,13 @@ function connectReceivedFeed() {
   // silently missing with no indication anything went wrong.
   eventSource.onopen = () => {
     setConnPill('connected');
+    noteSseActivity();
     loadBacklog();
   };
   eventSource.onerror = () => setConnPill('disconnected');
+  eventSource.addEventListener('ping', noteSseActivity);
   eventSource.onmessage = (event) => {
+    noteSseActivity();
     const item = JSON.parse(event.data);
     renderItem(item, { prepend: true });
     localStorage.setItem('lastSeenId', String(item.id));
@@ -626,9 +770,14 @@ function connectReceivedFeed() {
   // the client's own countdown to reach zero, which could be seconds off if
   // this device's clock is skewed relative to the server's.
   eventSource.addEventListener('session-expired', () => enterEndedState());
+
+  clearInterval(sseWatchdog);
+  sseWatchdog = setInterval(checkSseHealth, 10000);
 }
 
 function disconnectReceivedFeed() {
+  clearInterval(sseWatchdog);
+  sseWatchdog = null;
   if (eventSource) {
     eventSource.close();
     eventSource = null;
@@ -636,6 +785,20 @@ function disconnectReceivedFeed() {
   receivedList.innerHTML = '';
   receivedEmpty.style.display = 'block';
 }
+
+// The same staleness check that guards against a silently-dead connection
+// on its own periodic timer (above) also runs immediately the moment the
+// user actually looks at the screen again — a phone's browser tab coming
+// back to the foreground, or (via beamNative.onResumeCheck, exposed by
+// desktop-app/preload.js) the tray app's window being shown again or the
+// whole system waking from sleep. Catching it right then, instead of
+// waiting for the next periodic tick, is what actually fixes "reopening
+// from the tray shows a stale view" at the source rather than papering
+// over it with an unconditional reload.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkSseHealth();
+});
+window.beamNative?.onResumeCheck?.(() => checkSseHealth());
 
 document.getElementById('send-link-btn').addEventListener('click', async () => {
   const { relayUrl, token } = loadConfig();

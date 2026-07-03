@@ -40,7 +40,10 @@ async function handleShareTarget(request) {
     const token = await getConfigValue('token');
     const relayUrl = await getConfigValue('relayUrl');
     if (!token || !relayUrl) {
-      return Response.redirect('/?error=not-paired', 303);
+      // /app, not the bare root — root now serves beamlot.com's marketing
+      // landing page; the actual pairing app (which reads ?error=/?shared=
+      // off the URL — see src/app.js) lives at /app.
+      return Response.redirect('/app?error=not-paired', 303);
     }
 
     const url = formData.get('url') || formData.get('text');
@@ -62,8 +65,8 @@ async function handleShareTarget(request) {
       });
     }
 
-    return Response.redirect('/?shared=ok', 303);
+    return Response.redirect('/app?shared=ok', 303);
   } catch (err) {
-    return Response.redirect('/?shared=error', 303);
+    return Response.redirect('/app?shared=error', 303);
   }
 }
