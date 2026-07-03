@@ -97,6 +97,18 @@ if (!itemsColumnsForDevice.some((c) => c.name === 'from_device_id')) {
   db.exec('ALTER TABLE items ADD COLUMN from_device_id INTEGER REFERENCES devices(id)');
 }
 
+// items.encrypted: set when the sender already AES-GCM encrypted the
+// payload client-side (see Phase 2a's P2P-with-encrypted-relay-fallback)
+// before it ever reached this server -- the relay stores and forwards the
+// ciphertext exactly as it would any other item, it just can't read it.
+// Same additive-migration pattern as the other columns above: existing
+// rows get encrypted = 0 (NULL treated as falsy everywhere this is read),
+// so every pre-existing item is correctly understood as unencrypted.
+const itemsColumnsForEncrypted = db.prepare('PRAGMA table_info(items)').all();
+if (!itemsColumnsForEncrypted.some((c) => c.name === 'encrypted')) {
+  db.exec('ALTER TABLE items ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0');
+}
+
 // accounts/connections/connect_codes are leftovers from the pre-ephemeral
 // era (real usernames/passwords, friend connections, admin) — no route
 // reads or writes them anymore. They can't just be left inert: node:sqlite
