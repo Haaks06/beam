@@ -22,6 +22,43 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 
 let tray;
 let mainWindow;
+let resizeTimer;
+
+// Matches web-client's showOnly() section names. The landing screen is a
+// single button and doesn't need the same vertical space as the connect
+// screen (QR code + code field + camera-scan button), so the window starts
+// small and only grows once there's actually more to show.
+const STATE_SIZES = {
+  start: { width: 420, height: 260 },
+  invite: { width: 420, height: 720 },
+  scan: { width: 420, height: 640 },
+  active: { width: 420, height: 640 },
+  ended: { width: 420, height: 320 },
+};
+
+// electron's BrowserWindow.setBounds({...}, animate) only animates on
+// macOS — on Windows/Linux the animate flag is silently ignored — so the
+// grow/shrink transition is done by hand here, stepping toward the target
+// size over a short duration instead of just snapping to it.
+function animateResize(win, targetWidth, targetHeight, duration = 220) {
+  if (!win || win.isDestroyed()) return;
+  clearInterval(resizeTimer);
+  const [startWidth, startHeight] = win.getSize();
+  if (startWidth === targetWidth && startHeight === targetHeight) return;
+  const startTime = Date.now();
+  resizeTimer = setInterval(() => {
+    if (win.isDestroyed()) {
+      clearInterval(resizeTimer);
+      return;
+    }
+    const t = Math.min(1, (Date.now() - startTime) / duration);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    const width = Math.round(startWidth + (targetWidth - startWidth) * eased);
+    const height = Math.round(startHeight + (targetHeight - startHeight) * eased);
+    win.setSize(width, height);
+    if (t >= 1) clearInterval(resizeTimer);
+  }, 14);
+}
 
 // Closing the window (the X button) hides it back to the tray instead of
 // quitting — the tray's own "Quit" entry (see tray.js) is the only real
@@ -39,10 +76,10 @@ function notify(title, body) {
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 640,
+    width: STATE_SIZES.start.width,
+    height: STATE_SIZES.start.height,
     minWidth: 360,
-    minHeight: 480,
+    minHeight: 220,
     title: 'Beam',
     icon: ICON_PATH,
     show: false,
@@ -133,6 +170,11 @@ app.whenReady().then(() => {
     } catch (err) {
       console.error('failed to save received item', err);
     }
+  });
+
+  ipcMain.on('resize-window', (event, state) => {
+    const size = STATE_SIZES[state] || STATE_SIZES.start;
+    animateResize(mainWindow, size.width, size.height);
   });
 
   ipcMain.on('quit', () => {

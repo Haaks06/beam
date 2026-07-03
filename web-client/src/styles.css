@@ -196,29 +196,23 @@ h1 {
   font-size: 11px;
 }
 
-/* -- live connection pill -------------------------------------------- */
+/* -- connection signal (wifi-style bars, not a colored dot + text label) - */
 
 .signal {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-2);
 }
-.signal .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted-2);
-  transition: background 0.25s ease;
-  flex-shrink: 0;
+.signal-bars .bar { stroke: currentColor; transition: stroke 0.25s ease, opacity 0.25s ease; }
+.signal.connected { color: var(--violet-400); }
+.signal.connecting .bar-2, .signal.connecting .bar-3 { opacity: 0.3; }
+.signal.connecting .bar-1 { animation: signal-blink 1s ease-in-out infinite; }
+.signal.disconnected { color: var(--error); }
+.signal.disconnected .bar-2, .signal.disconnected .bar-3 { opacity: 0.25; }
+@keyframes signal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
-.signal.connected .dot { background: var(--violet-400); animation: beam-pulse-ring 2.2s ease-out infinite; }
-.signal.connecting .dot { background: var(--violet-600); }
-.signal.disconnected .dot { background: var(--error); }
 
 /* -- layout --------------------------------------------------------------- */
 

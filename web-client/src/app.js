@@ -99,7 +99,6 @@ const repairLink = document.getElementById('repair-link');
 const receivedList = document.getElementById('received-list');
 const receivedEmpty = document.getElementById('received-empty');
 const connPill = document.getElementById('conn-pill');
-const connPillText = document.getElementById('conn-pill-text');
 
 let eventSource = null;
 let invitePollTimer = null;
@@ -144,6 +143,7 @@ function showOnly(section) {
   inviteSection.style.display = section === 'invite' ? 'block' : 'none';
   appShell.style.display = section === 'active' ? 'block' : 'none';
   endedSection.style.display = section === 'ended' ? 'block' : 'none';
+  window.beamNative?.resizeWindow(section);
 }
 
 // --- Session lifecycle: start -> invite (waiting for the other device) ->
@@ -577,9 +577,9 @@ async function loadBacklog() {
 function setConnPill(state) {
   if (!connPill) return;
   connPill.style.display = 'inline-flex';
+  connPill.title = state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Disconnected';
   connPill.classList.remove('connected', 'connecting', 'disconnected');
   connPill.classList.add(state);
-  connPillText.textContent = state === 'connected' ? 'live' : state === 'connecting' ? 'connecting…' : 'offline';
 }
 
 function connectReceivedFeed() {

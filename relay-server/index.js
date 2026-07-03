@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const rateLimitHandler = require('./lib/rateLimitHandler');
 
 const { version: APP_VERSION } = require('../package.json');
 
@@ -54,10 +55,6 @@ app.use(express.json());
 // hit surfaced as a raw "Unexpected token 'T' ... is not valid JSON" parse
 // error instead of a readable message. One shared JSON handler for all
 // three limiters fixes it at the source instead of patching every caller.
-const rateLimitHandler = (req, res) => {
-  res.status(429).json({ error: 'Too many requests — wait a moment and try again.' });
-};
-
 const inboxLimiter = rateLimit({
   windowMs: Number(process.env.INBOX_LIMIT_WINDOW_MS) || 10 * 60 * 1000,
   limit: Number(process.env.INBOX_LIMIT_PER_WINDOW) || 200,
@@ -65,8 +62,11 @@ const inboxLimiter = rateLimit({
 });
 app.use('/inbox', inboxLimiter, inboxRoutes);
 
-const pairLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, handler: rateLimitHandler });
-app.use('/pair', pairLimiter, pairRoutes);
+// /pair's own per-route limiters live in routes/pair.js — the polling
+// GET /pair/status/:code needs a much more generous bucket than the
+// mutating POST routes (see comment there for why this used to be one
+// shared limiter and why that was broken).
+app.use('/pair', pairRoutes);
 
 const itemLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, handler: rateLimitHandler });
 app.use('/items', itemLimiter, itemRoutes);

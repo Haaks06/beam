@@ -12,19 +12,22 @@
 <body>
   <header class="app-header">
     <div class="brand">
-      <img class="brand-mark" src="/icons/icon-64.png" alt="" width="26" height="26" />
       <h1>Beam</h1>
     </div>
     <div class="header-actions">
-      <span id="conn-pill" class="signal" style="display:none"><span class="dot"></span><span id="conn-pill-text"></span></span>
+      <span id="conn-pill" class="signal" style="display:none">
+        <svg id="conn-pill-icon" class="signal-bars" viewBox="0 0 20 16" width="16" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path class="bar bar-1" d="M2 13v-1" />
+          <path class="bar bar-2" d="M8 13v-4" />
+          <path class="bar bar-3" d="M14 13V4" />
+        </svg>
+      </span>
       <button id="install-btn">Install</button>
     </div>
   </header>
-  <p class="tagline">Connect two devices for 2 minutes, share a photo or link, done — nothing is saved.</p>
 
   <section id="start-section">
-    <button id="connect-btn" class="primary connect-btn">⚡ Connect to Beam</button>
-    <p class="hint-text">Pairs with one other device for 2 minutes — nothing is saved after.</p>
+    <button id="connect-btn" class="primary connect-btn">Connect to Beam</button>
   </section>
 
   <section id="invite-section" style="display:none">
@@ -41,7 +44,7 @@
     <label>Pairing code<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
     <button id="pair-btn" class="primary">Connect</button>
 
-    <button type="button" id="scan-qr-btn" class="primary">📷 Scan QR with camera</button>
+    <button type="button" id="scan-qr-btn" class="primary">Scan QR with camera</button>
 
     <button type="button" id="show-advanced-btn" class="toggle-link">Using a different relay?</button>
     <div id="advanced-section" style="display:none">
@@ -96,7 +99,7 @@
         </div>
         <button id="send-photo-btn" class="primary" disabled>Send photo</button>
 
-        <button type="button" id="show-text-btn" class="text-toggle-box">✏️ Or send a link/text instead</button>
+        <button type="button" id="show-text-btn" class="text-toggle-box">Or send a link/text instead</button>
         <div id="text-section" style="display:none">
           <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
           <button id="send-link-btn" class="primary">Send</button>

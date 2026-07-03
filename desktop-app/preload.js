@@ -9,4 +9,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('beamNative', {
   itemReceived: (item, relayUrl, token) => ipcRenderer.send('item-received', item, relayUrl, token),
   quit: () => ipcRenderer.send('quit'),
+  // Lets main.js grow/shrink the window to fit whichever section is showing
+  // — the landing screen is just one button, but the connect screen needs
+  // room for a QR code, a code field, and a camera-scan button. See
+  // showOnly() in app.js, the single place every state transition passes
+  // through.
+  resizeWindow: (state) => ipcRenderer.send('resize-window', state),
 });

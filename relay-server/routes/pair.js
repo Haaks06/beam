@@ -1,10 +1,27 @@
 const crypto = require('node:crypto');
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const QRCode = require('qrcode');
 const db = require('../db');
 const { requireToken } = require('../auth');
+const rateLimitHandler = require('../lib/rateLimitHandler');
 
 const router = express.Router();
+
+// /pair/status/:code is polled every 2 seconds by the initiating device
+// while the connect screen is open (see web-client's pollInvite()) — that
+// alone is ~30 requests/minute from completely normal, non-abusive use,
+// before counting multiple browser tabs or a phone+desktop both polling.
+// It used to share a single 20/min bucket with the mutating routes below,
+// so just leaving the connect screen open for under a minute could exhaust
+// it and make pairing look broken. It's read-only and cheap (one indexed
+// SELECT), so it gets its own generous limiter instead of none at all.
+const statusLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, handler: rateLimitHandler });
+
+// The actual mutations are rare by comparison — one /init per connect
+// attempt, one /claim per device joining — so a real, tighter limit here
+// still protects against abuse without affecting normal usage.
+const mutationLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, handler: rateLimitHandler });
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
 const CODE_LENGTH = 6;
@@ -40,7 +57,7 @@ const getInbox = db.prepare('SELECT * FROM inboxes WHERE id = ?');
 // POST /pair/init — generates a code that adds the SECOND (and only the
 // second) device to the caller's inbox. A pairing is exactly two devices,
 // so this refuses to mint a code once that slot is already filled.
-router.post('/init', requireToken, async (req, res) => {
+router.post('/init', mutationLimiter, requireToken, async (req, res) => {
   if (countDevices.get(req.device.inbox_id).count >= 2) {
     return res.status(409).json({ error: 'this pairing is already full' });
   }
@@ -68,7 +85,7 @@ router.post('/init', requireToken, async (req, res) => {
 // a long-lived device token scoped to whichever inbox minted the code.
 // Unauthenticated by necessity: the claiming device doesn't have a token yet.
 // Claiming the second device is what starts the 2-minute session clock.
-router.post('/claim', (req, res) => {
+router.post('/claim', mutationLimiter, (req, res) => {
   const { pairingCode, label } = req.body || {};
   if (!pairingCode || typeof pairingCode !== 'string') {
     return res.status(400).json({ error: 'pairingCode is required' });
@@ -108,7 +125,7 @@ router.post('/claim', (req, res) => {
 // app) know once some client has claimed the code, without exposing the
 // token. Also surfaces expiresAt once claimed, since the initiating device
 // never calls /pair/claim itself and needs its own countdown start time.
-router.get('/status/:code', (req, res) => {
+router.get('/status/:code', statusLimiter, (req, res) => {
   const pairing = getPairing.get(req.params.code.toUpperCase());
   if (!pairing) {
     return res.status(404).json({ error: 'unknown pairing code' });
