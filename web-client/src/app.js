@@ -792,6 +792,8 @@ const CHECK_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"></path></svg>';
 const DOWNLOAD_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
+const FILE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>';
 
 function makeCopyButton(text) {
   const btn = document.createElement('button');
@@ -927,6 +929,78 @@ async function renderItem(item, { prepend } = { prepend: true }) {
     dl.setAttribute('aria-label', 'Download photo');
     dl.innerHTML = DOWNLOAD_ICON;
     row.appendChild(dl);
+  } else if (item.type === 'file') {
+    // Same dual-path shape as 'photo' above (P2P dataBase64 vs. relay
+    // fileUrl+decrypt), just rendered as a filename/icon row instead of an
+    // <img> since it's an arbitrary PDF/.doc/.docx/.zip.
+    let fileSrc;
+    if (item.dataBase64) {
+      fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'application/octet-stream' }));
+    } else {
+      fileSrc = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
+      if (item.encrypted && p2pController) {
+        try {
+          const encRes = await fetch(fileSrc);
+          const encBuf = await encRes.arrayBuffer();
+          const decBuf = await p2pController.decryptFromRelay(encBuf);
+          fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'application/octet-stream' }));
+        } catch {
+          // Falls through with the raw (still-encrypted) fileSrc.
+        }
+      }
+    }
+    const contentRow = document.createElement('div');
+    contentRow.className = 'item-content-row file-row';
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.innerHTML = FILE_ICON;
+    contentRow.appendChild(icon);
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    name.textContent = item.filename || 'file';
+    contentRow.appendChild(name);
+    const dl = document.createElement('a');
+    dl.href = fileSrc;
+    dl.download = item.filename || '';
+    dl.className = 'icon-btn download-btn';
+    dl.title = 'Download';
+    dl.setAttribute('aria-label', 'Download file');
+    dl.innerHTML = DOWNLOAD_ICON;
+    contentRow.appendChild(dl);
+    row.appendChild(contentRow);
+  } else if (item.type === 'voice') {
+    // Same dual-path shape again, rendered as a native <audio> player.
+    let fileSrc;
+    if (item.dataBase64) {
+      fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'audio/webm' }));
+    } else {
+      fileSrc = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
+      if (item.encrypted && p2pController) {
+        try {
+          const encRes = await fetch(fileSrc);
+          const encBuf = await encRes.arrayBuffer();
+          const decBuf = await p2pController.decryptFromRelay(encBuf);
+          fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'audio/webm' }));
+        } catch {
+          // Falls through with the raw (still-encrypted) fileSrc.
+        }
+      }
+    }
+    const contentRow = document.createElement('div');
+    contentRow.className = 'item-content-row voice-row';
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.src = fileSrc;
+    contentRow.appendChild(audio);
+    const dl = document.createElement('a');
+    dl.href = fileSrc;
+    dl.download = '';
+    dl.className = 'icon-btn download-btn';
+    dl.title = 'Download';
+    dl.setAttribute('aria-label', 'Download voice memo');
+    dl.innerHTML = DOWNLOAD_ICON;
+    contentRow.appendChild(dl);
+    row.appendChild(contentRow);
   }
 
   const meta = document.createElement('div');
@@ -1321,6 +1395,205 @@ if (showTextBtn && textSection) {
     textSection.style.display = willShow ? 'block' : 'none';
     if (willShow) document.getElementById('link-url')?.focus();
   });
+}
+
+// -- Phase 2d: generic file picker (PDF/.doc/.docx/.zip) -----------------
+// Same P2P-first, encrypted-relay-fallback shape as sendPhotoBtn's
+// handler, targeting /items/file instead.
+
+const showFileBtn = document.getElementById('show-file-btn');
+const fileSection = document.getElementById('file-section');
+const genericFileInput = document.getElementById('generic-file-input');
+const chooseFileBtn = document.getElementById('choose-file-btn');
+const selectedFileNameEl = document.getElementById('selected-file-name');
+const sendFileBtn = document.getElementById('send-file-btn');
+let selectedGenericFile = null;
+
+if (showFileBtn && fileSection) {
+  showFileBtn.addEventListener('click', () => {
+    const willShow = fileSection.style.display === 'none';
+    fileSection.style.display = willShow ? 'block' : 'none';
+  });
+}
+chooseFileBtn?.addEventListener('click', () => genericFileInput.click());
+genericFileInput?.addEventListener('change', () => {
+  selectedGenericFile = genericFileInput.files[0] || null;
+  selectedFileNameEl.textContent = selectedGenericFile ? selectedGenericFile.name : '';
+  sendFileBtn.disabled = !selectedGenericFile;
+});
+
+sendFileBtn?.addEventListener('click', async () => {
+  const { relayUrl, token } = loadConfig();
+  if (!token) return setStatus('Pair this device first.', 'error');
+  if (!selectedGenericFile) return setStatus('Choose a file to send.', 'error');
+  sendFileBtn.classList.add('sending');
+  sendFileBtn.disabled = true;
+  try {
+    setStatus('Sending file...');
+    const fileBuf = await selectedGenericFile.arrayBuffer();
+    const mimeType = selectedGenericFile.type || 'application/octet-stream';
+
+    let sentDirect = false;
+    if (p2pController) {
+      await p2pController.waitUntilReady();
+      sentDirect = p2pController.trySendDirect({
+        type: 'file',
+        mimeType,
+        filename: selectedGenericFile.name,
+        dataBase64: bufToBase64(fileBuf),
+        createdAt: Date.now(),
+      });
+    }
+    if (!sentDirect) {
+      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      let res;
+      if (encryptedBuf) {
+        res = await fetch(`${relayUrl}/items/file?encrypted=true`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
+          body: encryptedBuf,
+        });
+      } else {
+        const fd = new FormData();
+        fd.append('file', selectedGenericFile);
+        res = await fetch(`${relayUrl}/items/file`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+      }
+      if (res.status === 401) return enterEndedState();
+      if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    }
+    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): ${truncate(selectedGenericFile.name, 60)}`, 'success');
+    selectedGenericFile = null;
+    selectedFileNameEl.textContent = '';
+    genericFileInput.value = '';
+    sendFileBtn.disabled = true;
+  } catch (err) {
+    setStatus(`Failed to send file: ${err.message}`, 'error');
+  } finally {
+    sendFileBtn.classList.remove('sending');
+    sendFileBtn.disabled = !selectedGenericFile;
+  }
+});
+
+// -- Phase 2d: hold-to-record/release-to-send voice memo ------------------
+// MediaRecorder's actual output MIME type varies by browser (Chrome/
+// Firefox default to audio/webm, Safari to audio/mp4) -- whatever it
+// reports is exactly what gets sent, matching one of lib/upload.js's
+// ALLOWED_AUDIO_EXT entries either way.
+
+const showVoiceBtn = document.getElementById('show-voice-btn');
+const voiceSection = document.getElementById('voice-section');
+const recordVoiceBtn = document.getElementById('record-voice-btn');
+const voiceRecordStatus = document.getElementById('voice-record-status');
+
+if (showVoiceBtn && voiceSection) {
+  showVoiceBtn.addEventListener('click', () => {
+    const willShow = voiceSection.style.display === 'none';
+    voiceSection.style.display = willShow ? 'block' : 'none';
+  });
+}
+
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceStream = null;
+
+async function startVoiceRecording() {
+  if (voiceRecorder) return; // already recording -- ignore a duplicate press
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    voiceRecordStatus.textContent = `Couldn't access the microphone: ${err.message}`;
+    return;
+  }
+  voiceChunks = [];
+  voiceRecorder = new MediaRecorder(voiceStream);
+  voiceRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0) voiceChunks.push(event.data);
+  };
+  voiceRecorder.start();
+  recordVoiceBtn.classList.add('recording');
+  voiceRecordStatus.textContent = 'Recording… release to send';
+}
+
+async function stopVoiceRecordingAndSend() {
+  if (!voiceRecorder || voiceRecorder.state === 'inactive') return;
+  const mimeType = voiceRecorder.mimeType || 'audio/webm';
+  const stopped = new Promise((resolve) => {
+    voiceRecorder.onstop = resolve;
+  });
+  voiceRecorder.stop();
+  await stopped;
+  for (const track of voiceStream.getTracks()) track.stop();
+  recordVoiceBtn.classList.remove('recording');
+
+  const blob = new Blob(voiceChunks, { type: mimeType });
+  voiceRecorder = null;
+  voiceChunks = [];
+  voiceStream = null;
+
+  if (blob.size === 0) {
+    voiceRecordStatus.textContent = 'Recording was empty — hold the button a moment longer.';
+    return;
+  }
+
+  const { relayUrl, token } = loadConfig();
+  if (!token) {
+    voiceRecordStatus.textContent = 'Pair this device first.';
+    return;
+  }
+  try {
+    voiceRecordStatus.textContent = 'Sending…';
+    const fileBuf = await blob.arrayBuffer();
+
+    let sentDirect = false;
+    if (p2pController) {
+      await p2pController.waitUntilReady();
+      sentDirect = p2pController.trySendDirect({
+        type: 'voice',
+        mimeType,
+        dataBase64: bufToBase64(fileBuf),
+        createdAt: Date.now(),
+      });
+    }
+    if (!sentDirect) {
+      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      let res;
+      if (encryptedBuf) {
+        res = await fetch(`${relayUrl}/items/voice?encrypted=true`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
+          body: encryptedBuf,
+        });
+      } else {
+        const fd = new FormData();
+        fd.append('file', blob, `memo.${mimeType.includes('webm') ? 'webm' : 'audio'}`);
+        res = await fetch(`${relayUrl}/items/voice`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+      }
+      if (res.status === 401) return enterEndedState();
+      if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    }
+    voiceRecordStatus.textContent = `Sent (${sentDirect ? 'direct' : 'relayed'}) — hold to record another.`;
+  } catch (err) {
+    voiceRecordStatus.textContent = `Failed to send: ${err.message}`;
+  }
+}
+
+if (recordVoiceBtn) {
+  recordVoiceBtn.addEventListener('mousedown', startVoiceRecording);
+  recordVoiceBtn.addEventListener('touchstart', (event) => {
+    event.preventDefault(); // avoid the synthetic mousedown that would otherwise also fire
+    startVoiceRecording();
+  });
+  for (const evt of ['mouseup', 'mouseleave', 'touchend', 'touchcancel']) {
+    recordVoiceBtn.addEventListener(evt, stopVoiceRecordingAndSend);
+  }
 }
 
 const shareStatus = new URLSearchParams(window.location.search).get('shared');

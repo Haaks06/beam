@@ -476,6 +476,24 @@ button.link:hover { color: var(--fg); background: none; }
 .icon-btn.copied { border-color: var(--violet-400); color: var(--violet-300); }
 .item-row .download-btn { margin-top: 8px; }
 
+/* Phase 2d: generic file + voice memo received items */
+.file-row { align-items: center; }
+.file-icon { flex-shrink: 0; display: inline-flex; color: var(--muted); }
+.file-icon svg { width: 20px; height: 20px; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-row { align-items: center; }
+.voice-row audio { flex: 1; min-width: 0; height: 32px; }
+
+#record-voice-btn.recording {
+  border-color: transparent;
+  background: var(--beam-gradient);
+  animation: recording-pulse 1.4s ease-in-out infinite;
+}
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
 /* -- tabs, with a sliding indicator instead of an instant color swap -------- */
 
 #tab-nav {
