@@ -91,6 +91,17 @@
   100% { box-shadow: inset 0 0 0 1px transparent, 0 0 0 0 transparent; border-color: var(--line); }
 }
 
+/* Phase 2e: the session dissolving away the instant the 2-minute window
+   hits zero -- a brief violet flash-then-fade rather than an abrupt cut,
+   so "the relay just forgot everything" actually reads as something
+   happening rather than a jump cut. */
+@keyframes burn-out {
+  0% { opacity: 1; filter: blur(0) brightness(1); transform: scale(1); }
+  25% { opacity: 1; filter: blur(1px) brightness(1.5); transform: scale(1.008); }
+  100% { opacity: 0; filter: blur(16px) brightness(2); transform: scale(1.04); }
+}
+#app-shell.burn-out { animation: burn-out 0.55s var(--ease-out-expo) both; pointer-events: none; }
+
 @keyframes sweep {
   0% { transform: translateX(-160%) skewX(-14deg); }
   100% { transform: translateX(260%) skewX(-14deg); }
@@ -334,6 +345,22 @@ button.link:hover { color: var(--fg); background: none; }
   justify-content: space-between;
   margin-bottom: 12px;
 }
+/* Phase 2a: direct (P2P data channel) vs relayed (encrypted fallback) --
+   quiet by default (muted, no fill), a soft violet fill once actually
+   direct, since that's the state worth drawing a little attention to. */
+.p2p-indicator {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.p2p-indicator.direct { color: var(--violet-300); border-color: var(--violet-500); background: rgba(114, 56, 245, 0.1); }
+.p2p-indicator.relayed { color: var(--muted); }
+
 #session-timer {
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -460,6 +487,24 @@ button.link:hover { color: var(--fg); background: none; }
 .icon-btn.copied { border-color: var(--violet-400); color: var(--violet-300); }
 .item-row .download-btn { margin-top: 8px; }
 
+/* Phase 2d: generic file + voice memo received items */
+.file-row { align-items: center; }
+.file-icon { flex-shrink: 0; display: inline-flex; color: var(--muted); }
+.file-icon svg { width: 20px; height: 20px; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-row { align-items: center; }
+.voice-row audio { flex: 1; min-width: 0; height: 32px; }
+
+#record-voice-btn.recording {
+  border-color: transparent;
+  background: var(--beam-gradient);
+  animation: recording-pulse 1.4s ease-in-out infinite;
+}
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
 /* -- tabs, with a sliding indicator instead of an instant color swap -------- */
 
 #tab-nav {
@@ -524,6 +569,52 @@ button.link:hover { color: var(--fg); background: none; }
   font-family: var(--font-display);
   letter-spacing: 0.01em;
 }
+
+/* -- Phase 2c: trusted-device reconnect + remember-pairing toggle ------- */
+.trusted-device-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.trusted-device-card .label { font-size: 13px; font-weight: 600; }
+.trusted-device-card .reconnect-btn {
+  width: auto;
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 12px;
+  background: var(--beam-gradient);
+  border-color: transparent;
+  color: #fff;
+}
+.trusted-device-card .forget-btn {
+  width: auto;
+  margin: 0;
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--muted-2);
+  font-size: 11px;
+  text-decoration: underline;
+}
+.trusted-device-card .forget-btn:hover { color: var(--fg); background: none; }
+#trusted-devices-list { margin-bottom: 14px; }
+
+.remember-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 14px;
+  cursor: pointer;
+}
+.remember-toggle input { width: auto; margin: 0; accent-color: var(--violet-500); }
 
 /* -- "or send a link/text instead": was a barely-visible underlined text
    link sitting below a much bigger photo drop zone — easy to miss entirely.

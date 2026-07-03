@@ -27,6 +27,11 @@
   </header>
 
   <section id="start-section">
+    <!-- Phase 2c: populated by trust.js's listTrustedDevices() -- hidden
+         (and left empty) entirely until at least one device has been
+         remembered, so a first-time visitor sees exactly what they always
+         have: one button. -->
+    <div id="trusted-devices-list" style="display:none"></div>
     <button id="connect-btn" class="primary connect-btn">Connect to Beam</button>
   </section>
 
@@ -75,8 +80,23 @@
   <div id="app-shell" style="display:none">
     <div id="session-banner">
       <span id="session-timer"></span>
+      <!-- Phase 2a: whether items are currently going peer-to-peer
+           (WebRTC data channel) or through the relay (still end-to-end
+           encrypted, just not direct) -- see p2p.js. Hidden until a mode
+           actually settles, so there's no flash of a wrong/premature state
+           on a fresh pairing. -->
+      <span id="p2p-indicator" class="p2p-indicator" style="display:none"></span>
       <button id="repair-link" class="link">Start over</button>
     </div>
+
+    <!-- Phase 2c: opt-in, off by default. Enabling this is the one user
+         action that kicks off the whole trusted-device handshake (see
+         trust.js) -- the other device doesn't need to do anything, it
+         auto-replies once it receives the handshake. -->
+    <label class="remember-toggle">
+      <input type="checkbox" id="remember-pairing-toggle" />
+      <span>Remember this pairing for next time</span>
+    </label>
 
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="send">Send</button>
@@ -103,6 +123,26 @@
         <div id="text-section" style="display:none">
           <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
           <button id="send-link-btn" class="primary">Send</button>
+        </div>
+
+        <!-- Phase 2d: generic small files (PDF/.doc/.docx/.zip). Same
+             P2P-first, encrypted-relay-fallback send path as photos and
+             links, targeting POST /items/file instead. -->
+        <button type="button" id="show-file-btn" class="text-toggle-box">Or send a file</button>
+        <div id="file-section" style="display:none">
+          <input id="generic-file-input" type="file" accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed" hidden />
+          <button type="button" id="choose-file-btn" class="link">Choose a file (PDF, Word doc, or ZIP)</button>
+          <div id="selected-file-name" class="waiting-text"></div>
+          <button id="send-file-btn" class="primary" disabled>Send file</button>
+        </div>
+
+        <!-- Phase 2d: hold-to-record/release-to-send voice memo via
+             MediaRecorder, sent over POST /items/voice (or the P2P data
+             channel) the same way. -->
+        <button type="button" id="show-voice-btn" class="text-toggle-box">Or send a voice memo</button>
+        <div id="voice-section" style="display:none">
+          <button type="button" id="record-voice-btn" class="primary">Hold to record</button>
+          <p class="waiting-text" id="voice-record-status"></p>
         </div>
       </section>
     </div>

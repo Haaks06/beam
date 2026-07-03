@@ -64,13 +64,32 @@ token for that specific, currently-live pairing.
   live — bounded by the same 2-minute/10-minute windows above, but real
   exposure while it lasts. This is the same trust boundary as any
   self-hosted personal server.
-- **Malicious file content.** Uploads are restricted to a small image MIME
-  allowlist, never executed or interpreted server-side, and the actual
-  bytes are checked against each allowed format's real magic number after
-  upload (`lib/sniffImageType.js`) — a file whose content doesn't match any
-  allowed image format is rejected and deleted regardless of what
-  `Content-Type` it claimed. This still isn't full content validation (no
-  image re-encoding, no scan for malformed/exploit-crafted-but-technically-
-  valid image data) — acceptable for what this protects against (arbitrary
-  non-image files masquerading as images), not a substitute for antivirus
-  scanning if that threat model ever applies.
+- **Malicious file content, for plain (non-encrypted) uploads.** Uploads
+  are restricted to a small allowlist per item type — images
+  (`lib/sniffImageType.js`), generic files (PDF/.doc/.docx/.zip) and voice
+  memos (webm/ogg/wav/mp4/mp3) as of Phase 1d (both in
+  `lib/sniffFileType.js`) — never executed or interpreted server-side, and
+  the actual bytes are checked against each allowed format's real magic
+  number after upload — a file whose content doesn't match any allowed
+  format for its claimed item type is rejected and deleted regardless of
+  what `Content-Type` it claimed. This still isn't full content validation
+  (no re-encoding, no scan for malformed/exploit-crafted-but-technically-
+  valid data) — acceptable for what this protects against (arbitrary
+  files masquerading as an allowed type), not a substitute for antivirus
+  scanning if that threat model ever applies. One known, accepted gap:
+  `.docx`/`.xlsx`/`.pptx` share plain `.zip`'s magic number (they're ZIP
+  containers internally), so the sniff can only confirm "a valid ZIP," not
+  distinguish the exact Office format — out of scope for what this
+  protects against.
+
+  **This guarantee does not apply when `encrypted: true` is set** (see
+  Phase 2a's P2P-with-encrypted-relay-fallback). An AES-GCM-encrypted
+  upload's bytes are ciphertext, not its original content — magic-byte
+  sniffing is skipped entirely for these uploads, deliberately, since
+  ciphertext will never match a real magic number regardless of what the
+  original content actually was. The relay cannot verify an encrypted
+  upload's content at all: type, size within `MAX_UPLOAD_BYTES` (still
+  enforced), and nothing else. This is an accepted, intentional narrowing of the
+  above protection in exchange for the relay genuinely being unable to
+  read the payload — not an oversight, but a real tradeoff worth being
+  explicit about if this threat model is ever revisited.
