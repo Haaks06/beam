@@ -27,11 +27,6 @@
   </header>
 
   <section id="start-section">
-    <!-- Phase 2c: populated by trust.js's listTrustedDevices() -- hidden
-         (and left empty) entirely until at least one device has been
-         remembered, so a first-time visitor sees exactly what they always
-         have: one button. -->
-    <div id="trusted-devices-list" style="display:none"></div>
     <button id="connect-btn" class="primary connect-btn">Connect to Beam</button>
   </section>
 
@@ -88,15 +83,6 @@
       <span id="p2p-indicator" class="p2p-indicator" style="display:none"></span>
       <button id="repair-link" class="link">Start over</button>
     </div>
-
-    <!-- Phase 2c: opt-in, off by default. Enabling this is the one user
-         action that kicks off the whole trusted-device handshake (see
-         trust.js) -- the other device doesn't need to do anything, it
-         auto-replies once it receives the handshake. -->
-    <label class="remember-toggle">
-      <input type="checkbox" id="remember-pairing-toggle" />
-      <span>Remember this pairing for next time</span>
-    </label>
 
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="send">Send</button>

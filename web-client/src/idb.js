@@ -1,12 +1,14 @@
-// Shared IndexedDB access for app.js and trust.js. Kept as its own module
-// (rather than each importing from the other) specifically to avoid a
-// circular import between the two.
+// Shared IndexedDB access, kept as its own module so app.js's other
+// helpers don't need to duplicate the raw IndexedDB boilerplate.
 //
-// Version 2 adds the `trustedDevices` store (Phase 2c) alongside the
-// original `config` store (version 1). Version 3 adds `receivedItems`
-// (Phase 2 regression fix — see saveReceivedItem below). All upgrades are
-// idempotent against objectStoreNames.contains() so it's safe regardless
-// of which version an existing installation is upgrading from.
+// Version 2 added a `trustedDevices` store for the since-removed
+// trusted-device re-pair feature — no longer created for new installs,
+// but the version number itself is never rolled back once shipped
+// (opening the same IndexedDB database at a lower version than it's
+// already been upgraded to throws), so DB_VERSION stays at 3 rather than
+// renumbering. An existing install that already has that now-unused store
+// just keeps an empty, harmless one lying around. Version 3 adds
+// `receivedItems` (Phase 2 regression fix — see saveReceivedItem below).
 // public/sw.js keeps its own independent copy of the `config`-store logic
 // (it can't safely import a Vite-bundled module across the public/src
 // boundary — see its own comment), but its version number is kept in sync
@@ -15,7 +17,6 @@
 export const DB_NAME = 'beam';
 export const DB_VERSION = 3;
 export const CONFIG_STORE = 'config';
-export const TRUSTED_DEVICES_STORE = 'trustedDevices';
 export const RECEIVED_ITEMS_STORE = 'receivedItems';
 
 export function openDb() {
@@ -24,9 +25,6 @@ export function openDb() {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(CONFIG_STORE)) db.createObjectStore(CONFIG_STORE);
-      if (!db.objectStoreNames.contains(TRUSTED_DEVICES_STORE)) {
-        db.createObjectStore(TRUSTED_DEVICES_STORE, { keyPath: 'id' });
-      }
       if (!db.objectStoreNames.contains(RECEIVED_ITEMS_STORE)) {
         db.createObjectStore(RECEIVED_ITEMS_STORE, { autoIncrement: true });
       }

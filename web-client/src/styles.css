@@ -570,52 +570,6 @@ button.link:hover { color: var(--fg); background: none; }
   letter-spacing: 0.01em;
 }
 
-/* -- Phase 2c: trusted-device reconnect + remember-pairing toggle ------- */
-.trusted-device-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.trusted-device-card .label { font-size: 13px; font-weight: 600; }
-.trusted-device-card .reconnect-btn {
-  width: auto;
-  margin: 0;
-  padding: 7px 12px;
-  font-size: 12px;
-  background: var(--beam-gradient);
-  border-color: transparent;
-  color: #fff;
-}
-.trusted-device-card .forget-btn {
-  width: auto;
-  margin: 0;
-  padding: 4px;
-  border: none;
-  background: none;
-  color: var(--muted-2);
-  font-size: 11px;
-  text-decoration: underline;
-}
-.trusted-device-card .forget-btn:hover { color: var(--fg); background: none; }
-#trusted-devices-list { margin-bottom: 14px; }
-
-.remember-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-  margin: 0 0 14px;
-  cursor: pointer;
-}
-.remember-toggle input { width: auto; margin: 0; accent-color: var(--violet-500); }
-
 /* -- "or send a link/text instead": was a barely-visible underlined text
    link sitting below a much bigger photo drop zone — easy to miss entirely.
    A bordered box reads as a real second option, not a footnote. -------- */
