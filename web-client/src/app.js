@@ -110,11 +110,26 @@ let countdownTimer = null;
 // down in enterStartState()/enterEndedState() — never carried over between
 // pairings, same lifecycle as eventSource itself.
 let p2pController = null;
+// Phase 2b: this device's own apparent address, as last reported by
+// /pair/claim or /pair/status's remoteAddr (see relay-server/routes/
+// pair.js) — captured wherever pairing actually completes, then handed to
+// p2p.js so it can compare against the other device's and label a direct
+// connection "same network" purely as an informational signal. Comparing
+// remoteAddr doesn't change any connection logic itself — a real local
+// fast-path already falls out of standard ICE candidate prioritization,
+// which prefers lower-latency host candidates over STUN-reflexive ones on
+// its own.
+let myRemoteAddr = null;
 
 function setP2pIndicator(mode) {
   if (!p2pIndicatorEl) return;
   if (mode === 'direct') {
-    p2pIndicatorEl.textContent = 'Direct';
+    // Phase 2b: purely a label -- p2pController.isSameNetwork() reflects
+    // whether both devices' relay-perceived addresses matched, computed
+    // well before the connection itself settles, so it's always available
+    // by the time 'direct' mode actually fires.
+    const sameNetwork = p2pController?.isSameNetwork();
+    p2pIndicatorEl.textContent = sameNetwork ? 'Direct (same network)' : 'Direct';
     p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
   } else if (mode === 'relayed') {
     p2pIndicatorEl.textContent = 'Relayed (encrypted)';
@@ -253,6 +268,7 @@ function enterActiveState() {
     relayUrl: p2pRelayUrl,
     token: p2pToken,
     isOfferer: lastIntent === 'receive',
+    myRemoteAddr,
     onModeChange: setP2pIndicator,
     onItem: (item) => renderItem(item, { prepend: true }),
   });
@@ -339,6 +355,7 @@ function pollInvite(relayUrl, code) {
         inviteFrame?.classList.add('locked');
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
+        myRemoteAddr = data.remoteAddr;
         lastIntent = 'send';
         await showPairedAnimation();
         enterActiveState();
@@ -409,8 +426,9 @@ async function claimPairingCode(relayUrl, pairingCode) {
     body: JSON.stringify({ pairingCode, label: deviceLabel() }),
   });
   if (!res.ok) throw new Error(await parseErrorMessage(res, 'pairing failed'));
-  const { token, expiresAt } = await res.json();
+  const { token, expiresAt, remoteAddr } = await res.json();
   await saveConfig({ relayUrl, token, expiresAt });
+  myRemoteAddr = remoteAddr;
   clearInterval(invitePollTimer);
   await showPairedAnimation();
   enterActiveState();
