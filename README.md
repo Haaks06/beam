@@ -91,11 +91,13 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 5. In one terminal: `curl -N "http://localhost:3000/events?token=<token>"` to watch the live stream.
 6. In another terminal: `curl -X POST http://localhost:3000/items/link -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'` — it should appear instantly in the SSE stream.
 7. `curl -X POST http://localhost:3000/items/photo -H "Authorization: Bearer <token>" -F "file=@some.jpg"` then `curl -H "Authorization: Bearer <token>" http://localhost:3000/items/<id>/file -o out.jpg` to confirm round-trip.
-8. Wait until `expiresAt` passes, then confirm the same token now 401s and the uploaded file is gone from `relay-server/data/uploads`.
-9. `npm run dev:desktop` — repeat steps 5–7 and confirm the tray app's window shows the item live, shows a Windows notification, and saves it to `Documents\Beam\` / `Pictures\Beam\`.
-10. Run `ngrok http 3000`, point a real Android phone's browser at the ngrok HTTPS URL, install the PWA, pair via QR, then share a real link/photo from Chrome/Photos and confirm it reaches the desktop app — including with Wi-Fi off (cellular only), to prove this isn't LAN-limited.
-11. Repeat against the iOS Shortcut (see `ios-shortcut/README.md`) using the same ngrok URL.
-12. Only after all of the above pass, deploy to Fly.io (below) and re-pair everything against the production URL.
+8. `/signal` (WebRTC/E2E-setup signaling — see Phase 1a): with the same SSE stream from step 5 still open on `<token>`'s side, `curl -X POST http://localhost:3000/signal -H "Authorization: Bearer <second-token>" -H 'Content-Type: application/json' -d '{"type":"offer","payload":{"sdp":"v=0..."}}'` — the SSE terminal should show a `event: signal` line with that payload almost instantly, and the curl call itself gets `202 {"ok":true}`. Close the SSE stream and repeat the same `/signal` call — this time expect `404` (no live connection to deliver to).
+9. Encrypted-item round-trip (see Phase 1b): `curl -X POST http://localhost:3000/items/link -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"url":"ciphertext-blob-goes-here","encrypted":true}'` → confirm the response (and the other device's `GET /items?since=0`) both show `"encrypted":true`. Same idea for a photo: `curl -X POST http://localhost:3000/items/photo -H "Authorization: Bearer <token>" -F "encrypted=true" -F "file=@not-actually-an-image.bin"` should still return `201` (the magic-byte sniff is deliberately skipped for encrypted uploads — see `docs/THREAT_MODEL.md`), whereas the same call without `-F "encrypted=true"` against non-image bytes should `400`.
+10. Wait until `expiresAt` passes, then confirm the same token now 401s and the uploaded file is gone from `relay-server/data/uploads`.
+11. `npm run dev:desktop` — repeat steps 5–7 and confirm the tray app's window shows the item live, shows a Windows notification, and saves it to `Documents\Beam\` / `Pictures\Beam\`.
+12. Run `ngrok http 3000`, point a real Android phone's browser at the ngrok HTTPS URL, install the PWA, pair via QR, then share a real link/photo from Chrome/Photos and confirm it reaches the desktop app — including with Wi-Fi off (cellular only), to prove this isn't LAN-limited.
+13. Repeat against the iOS Shortcut (see `ios-shortcut/README.md`) using the same ngrok URL.
+14. Only after all of the above pass, deploy to Fly.io (below) and re-pair everything against the production URL.
 
 ## Deployment: Fly.io (recommended — this is what beam-wckn2w.fly.dev runs)
 
