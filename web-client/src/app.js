@@ -318,6 +318,13 @@ function enterActiveState() {
     onItem: (item) => {
       renderItem(item, { prepend: true });
       window.beamNative?.itemReceived(item, p2pRelayUrl, p2pToken);
+      // Same auto-copy the SSE/relay-delivered path has always had (see
+      // connectReceivedFeed) -- found missing here entirely while testing
+      // this exact change: a P2P-direct arrival (the common case for a
+      // same-network pair) never triggered any clipboard copy at all,
+      // regardless of content type, so the transport mode silently
+      // determined whether this feature worked.
+      copyIfLink(item);
     },
   });
 
@@ -696,6 +703,47 @@ function isHttpUrl(value) {
   }
 }
 
+// Broader than isHttpUrl on purpose, and used for a different decision:
+// isHttpUrl gates whether something renders as a clickable <a href> (strict
+// -- a bare "example.com" with no scheme is not a safe href target as-is),
+// this gates whether a received item is link-*like* enough to silently
+// land in the clipboard. The relay's own /items/link endpoint already
+// accepts arbitrary text, not just strict URLs (typing "example.com" or
+// pasting a plain note both work) -- this mirrors that same looseness for
+// the auto-copy decision, so "example.com" (no scheme) still auto-copies
+// while an ordinary sentence doesn't. Deliberately a lightweight pattern,
+// not a full URL parser: a scheme prefix, or the whole trimmed content
+// looking like host(.host)+.tld optionally followed by a path/query/
+// fragment/port -- not just any text that happens to mention a domain
+// somewhere in a sentence.
+function looksLikeLink(value) {
+  const trimmed = (value || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  return /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(trimmed);
+}
+
+// Shared by both live-arrival paths (SSE and P2P-direct, see
+// connectReceivedFeed and enterActiveState's onItem below) so a received
+// link auto-copies the same way regardless of which transport actually
+// delivered it -- found by testing that without this shared as one
+// function, it was easy for one path to have the check and the other not.
+// Only actual links auto-copy, not plain text/notes -- see looksLikeLink's
+// comment. A plain-text item still shows up normally in the Received list
+// and stays manually copyable via its copy-icon button (see
+// makeCopyButton), it just doesn't silently land in the clipboard on
+// arrival.
+function copyIfLink(item) {
+  if (item.type !== 'link' || !looksLikeLink(item.content)) return;
+  navigator.clipboard?.writeText(item.content).then(
+    () => setStatus(`Copied to clipboard: "${truncate(item.content, 60)}"`, 'success'),
+    () => {
+      // Some browsers refuse a clipboard write outside a direct user
+      // gesture (notably Safari) — not fatal, the item is still right
+      // there in the Received list to copy by hand.
+    }
+  );
+}
+
 const COPY_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 // Matches the checkmark already used for pair-success-badge elsewhere on
@@ -1061,16 +1109,7 @@ function connectReceivedFeed() {
     // whatever the user had just copied themselves. Restores what earlier
     // versions of the desktop app used to do (see saveHandlers.js's git
     // history) — beaming a link over is meant to be used right away.
-    if (item.type === 'link' && isHttpUrl(item.content)) {
-      navigator.clipboard?.writeText(item.content).then(
-        () => setStatus(`Copied to clipboard: "${truncate(item.content, 60)}"`, 'success'),
-        () => {
-          // Some browsers refuse a clipboard write outside a direct user
-          // gesture (notably Safari) — not fatal, the item is still right
-          // there in the Received list to copy by hand.
-        }
-      );
-    }
+    copyIfLink(item);
   };
   // Pushed by the relay the instant it deletes an expired session (see
   // relay-server/lib/sessionCleanup.js) — reacting to this beats waiting for
