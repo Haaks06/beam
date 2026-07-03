@@ -1,5 +1,6 @@
 import './styles.css';
 import jsQR from 'jsqr';
+import { initP2P, bufToBase64, base64ToBuf } from './p2p.js';
 
 const DB_NAME = 'beam';
 const STORE_NAME = 'config';
@@ -99,10 +100,33 @@ const repairLink = document.getElementById('repair-link');
 const receivedList = document.getElementById('received-list');
 const receivedEmpty = document.getElementById('received-empty');
 const connPill = document.getElementById('conn-pill');
+const p2pIndicatorEl = document.getElementById('p2p-indicator');
 
 let eventSource = null;
 let invitePollTimer = null;
 let countdownTimer = null;
+// Phase 2a: peer-to-peer transfer with an encrypted-relay fallback (see
+// p2p.js). Set up fresh in enterActiveState() for every new session, torn
+// down in enterStartState()/enterEndedState() — never carried over between
+// pairings, same lifecycle as eventSource itself.
+let p2pController = null;
+
+function setP2pIndicator(mode) {
+  if (!p2pIndicatorEl) return;
+  if (mode === 'direct') {
+    p2pIndicatorEl.textContent = 'Direct';
+    p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
+  } else if (mode === 'relayed') {
+    p2pIndicatorEl.textContent = 'Relayed (encrypted)';
+    p2pIndicatorEl.title = "Couldn't connect directly — going through the relay, still end-to-end encrypted";
+  } else {
+    p2pIndicatorEl.textContent = 'Connecting…';
+    p2pIndicatorEl.title = 'Trying a direct connection to the other device';
+  }
+  p2pIndicatorEl.style.display = 'inline-block';
+  p2pIndicatorEl.classList.remove('direct', 'relayed');
+  if (mode === 'direct' || mode === 'relayed') p2pIndicatorEl.classList.add(mode);
+}
 // Bumped every time we (re-)enter the invite flow or leave it (Cancel,
 // pairing completing, page reload's own refreshState() call, etc). A
 // /pair/init response's continuation only applies its result if this still
@@ -168,6 +192,9 @@ function enterStartState() {
   clearInterval(countdownTimer);
   stopQrScan();
   if (connPill) connPill.style.display = 'none';
+  p2pController?.teardown();
+  p2pController = null;
+  if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
   advancedSection.style.display = 'none';
   showOnly('start');
 }
@@ -191,6 +218,9 @@ function enterEndedState() {
   disconnectReceivedFeed();
   clearInterval(invitePollTimer);
   clearInterval(countdownTimer);
+  p2pController?.teardown();
+  p2pController = null;
+  if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
   showOnly('ended');
 }
 
@@ -207,6 +237,25 @@ function enterActiveState() {
   requestAnimationFrame(positionTabIndicator);
   sseRetryDelay = SSE_BASE_RETRY_MS; // fresh session, fresh backoff
   connectReceivedFeed();
+
+  // Phase 2a: kick off the P2P attempt (ECDH pubkey exchange + WebRTC
+  // offer/answer/ICE, all over /signal) the moment a session goes active.
+  // isOfferer needs to be a deterministic, already-established asymmetry
+  // between the two devices rather than a race — lastIntent already
+  // captures exactly that: 'receive' means this device just claimed the
+  // other's pairing code (see claimPairingCode()), 'send' means it's the
+  // one that generated the code. Arbitrary which side offers as long as
+  // both sides agree, and they always do since it's derived the same way
+  // on both ends of one pairing.
+  const { relayUrl: p2pRelayUrl, token: p2pToken } = loadConfig();
+  p2pController?.teardown();
+  p2pController = initP2P({
+    relayUrl: p2pRelayUrl,
+    token: p2pToken,
+    isOfferer: lastIntent === 'receive',
+    onModeChange: setP2pIndicator,
+    onItem: (item) => renderItem(item, { prepend: true }),
+  });
 
   clearInterval(countdownTimer);
   const tick = () => {
@@ -606,7 +655,11 @@ function makeCopyButton(text) {
   return btn;
 }
 
-function renderItem(item, { prepend } = { prepend: true }) {
+// Async because a relayed (non-P2P) encrypted item needs to be decrypted
+// before it can be shown — a P2P-received item (see p2p.js's onItem
+// callback) is never encrypted at the app level (WebRTC's own mandatory
+// DTLS already covers that path) and resolves through this immediately.
+async function renderItem(item, { prepend } = { prepend: true }) {
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
   const row = document.createElement('div');
@@ -618,33 +671,67 @@ function renderItem(item, { prepend } = { prepend: true }) {
   const time = new Date(item.createdAt).toLocaleString();
   const from = item.sourceLabel ? `from ${item.sourceLabel}` : '';
 
-  if (item.type === 'link' && isHttpUrl(item.content)) {
+  let displayContent = item.content;
+  if (item.encrypted && item.type === 'link' && p2pController) {
+    try {
+      const decryptedBuf = await p2pController.decryptFromRelay(base64ToBuf(item.content));
+      displayContent = new TextDecoder().decode(decryptedBuf);
+    } catch {
+      // Shared secret not established (e.g. this device reloaded mid-
+      // session and lost its ephemeral keypair) -- show plainly that it
+      // couldn't be read rather than silently rendering ciphertext as if
+      // it were the real content.
+      displayContent = '[Encrypted — could not decrypt]';
+    }
+  }
+
+  if (item.type === 'link' && isHttpUrl(displayContent)) {
     const contentRow = document.createElement('div');
     contentRow.className = 'item-content-row';
     const a = document.createElement('a');
-    a.href = item.content;
+    a.href = displayContent;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
-    a.textContent = item.content;
+    a.textContent = displayContent;
     contentRow.appendChild(a);
-    contentRow.appendChild(makeCopyButton(item.content));
+    contentRow.appendChild(makeCopyButton(displayContent));
     row.appendChild(contentRow);
   } else if (item.type === 'link') {
     const contentRow = document.createElement('div');
     contentRow.className = 'item-content-row';
     const span = document.createElement('span');
-    span.textContent = item.content;
+    span.textContent = displayContent;
     contentRow.appendChild(span);
-    contentRow.appendChild(makeCopyButton(item.content));
+    contentRow.appendChild(makeCopyButton(displayContent));
     row.appendChild(contentRow);
   } else if (item.type === 'photo') {
-    const fileUrl = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
+    // A P2P-direct photo (see p2p.js's onItem callback / the sendPhotoBtn
+    // handler above) arrives as base64 bytes with no relay fileUrl at all
+    // -- nothing to fetch or decrypt, just decode it straight to a Blob.
+    let fileSrc;
+    if (item.dataBase64) {
+      fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'image/jpeg' }));
+    } else {
+      fileSrc = `${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`;
+      if (item.encrypted && p2pController) {
+        try {
+          const encRes = await fetch(fileSrc);
+          const encBuf = await encRes.arrayBuffer();
+          const decBuf = await p2pController.decryptFromRelay(encBuf);
+          fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'image/jpeg' }));
+        } catch {
+          // Falls through with the raw (still-encrypted) fileSrc -- the
+          // <img> just fails to decode it, which is at least visibly wrong
+          // rather than silently showing nothing or the wrong content.
+        }
+      }
+    }
     const img = document.createElement('img');
-    img.src = fileUrl;
+    img.src = fileSrc;
     img.alt = 'Received photo';
     row.appendChild(img);
     const dl = document.createElement('a');
-    dl.href = fileUrl;
+    dl.href = fileSrc;
     dl.download = '';
     dl.className = 'icon-btn download-btn';
     dl.title = 'Download';
@@ -677,7 +764,7 @@ async function loadBacklog() {
     if (!res.ok) return;
     const { items } = await res.json();
     for (const item of items) {
-      renderItem(item, { prepend: false });
+      await renderItem(item, { prepend: false });
       localStorage.setItem('lastSeenId', String(item.id));
     }
   } catch {
@@ -804,6 +891,13 @@ function connectReceivedFeed() {
   // the client's own countdown to reach zero, which could be seconds off if
   // this device's clock is skewed relative to the server's.
   eventSource.addEventListener('session-expired', () => enterEndedState());
+  // Phase 2a: WebRTC/E2E-setup signaling (pubkey/offer/answer/ICE) — see
+  // relay-server/routes/signal.js and p2p.js. A distinct named event from
+  // the generic unnamed item message above, exactly so the two can never
+  // be confused for one another.
+  eventSource.addEventListener('signal', (event) => {
+    p2pController?.handleSignal(JSON.parse(event.data));
+  });
 
   clearInterval(sseWatchdog);
   sseWatchdog = setInterval(checkSseHealth, 10000);
@@ -851,18 +945,34 @@ document.getElementById('send-link-btn').addEventListener('click', async () => {
   btn.disabled = true;
   try {
     setStatus('Sending...');
-    const res = await fetch(`${relayUrl}/items/link`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
-    if (res.status === 401) return enterEndedState();
-    if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    // Phase 2a: try the P2P data channel first (waitUntilReady resolves
+    // once a mode is actually settled, capped at p2p.js's own connect
+    // timeout — never hangs indefinitely). Falls through to the relay,
+    // AES-GCM encrypted with the derived shared secret, if direct send
+    // isn't available (not yet connected, or it never connected at all).
+    let sentDirect = false;
+    if (p2pController) {
+      await p2pController.waitUntilReady();
+      sentDirect = p2pController.trySendDirect({ type: 'link', content: url, createdAt: Date.now() });
+    }
+    if (!sentDirect) {
+      const encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(url));
+      const body = encryptedBuf
+        ? { url: bufToBase64(encryptedBuf), encrypted: true }
+        : { url }; // no p2pController (shouldn't happen while paired) -- plain send rather than failing outright
+      const res = await fetch(`${relayUrl}/items/link`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) return enterEndedState();
+      if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    }
     // Names the actual content sent instead of a generic "Beamed!" — the
     // sender no longer sees this item echo back into their own Received
     // tab (the relay excludes them from their own broadcast now), so this
     // status line is the one place confirming exactly what went out.
-    setStatus(`Sent: "${truncate(url, 60)}"`, 'success');
+    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): "${truncate(url, 60)}"`, 'success');
     document.getElementById('link-url').value = '';
   } catch (err) {
     setStatus(`Failed to send: ${err.message}`, 'error');
@@ -961,16 +1071,49 @@ sendPhotoBtn.addEventListener('click', async () => {
   sendPhotoBtn.disabled = true;
   try {
     setStatus('Sending photo...');
-    const fd = new FormData();
-    fd.append('file', selectedPhotoFile);
-    const res = await fetch(`${relayUrl}/items/photo`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-    });
-    if (res.status === 401) return enterEndedState();
-    if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
-    setStatus(`Sent: ${truncate(selectedPhotoFile.name || 'photo', 60)}`, 'success');
+    const fileBuf = await selectedPhotoFile.arrayBuffer();
+
+    // Phase 2a: same P2P-first, encrypted-relay-fallback shape as the link
+    // sender. The data channel can't carry raw binary through this
+    // module's JSON-envelope design, so a direct send base64-encodes the
+    // bytes into the same envelope shape p2p.js's onItem hands back on the
+    // receiving end (see renderItem()'s dataBase64 branch below) --
+    // accepted overhead for a photo this size, not worth a second
+    // wire format just to avoid it.
+    let sentDirect = false;
+    if (p2pController) {
+      await p2pController.waitUntilReady();
+      sentDirect = p2pController.trySendDirect({
+        type: 'photo',
+        mimeType: selectedPhotoFile.type || 'image/jpeg',
+        dataBase64: bufToBase64(fileBuf),
+        createdAt: Date.now(),
+      });
+    }
+    if (!sentDirect) {
+      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      let res;
+      if (encryptedBuf) {
+        res = await fetch(`${relayUrl}/items/photo?encrypted=true`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': selectedPhotoFile.type || 'image/jpeg' },
+          body: encryptedBuf,
+        });
+      } else {
+        // No p2pController (shouldn't happen while paired) -- plain
+        // multipart send rather than failing outright.
+        const fd = new FormData();
+        fd.append('file', selectedPhotoFile);
+        res = await fetch(`${relayUrl}/items/photo`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+      }
+      if (res.status === 401) return enterEndedState();
+      if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+    }
+    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): ${truncate(selectedPhotoFile.name || 'photo', 60)}`, 'success');
     setSelectedPhoto(null);
     photoFileInput.value = '';
   } catch (err) {

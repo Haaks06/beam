@@ -334,6 +334,22 @@ button.link:hover { color: var(--fg); background: none; }
   justify-content: space-between;
   margin-bottom: 12px;
 }
+/* Phase 2a: direct (P2P data channel) vs relayed (encrypted fallback) --
+   quiet by default (muted, no fill), a soft violet fill once actually
+   direct, since that's the state worth drawing a little attention to. */
+.p2p-indicator {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.p2p-indicator.direct { color: var(--violet-300); border-color: var(--violet-500); background: rgba(114, 56, 245, 0.1); }
+.p2p-indicator.relayed { color: var(--muted); }
+
 #session-timer {
   font-family: var(--font-mono);
   font-size: 11.5px;
