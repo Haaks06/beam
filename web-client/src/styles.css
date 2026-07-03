@@ -592,6 +592,13 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .text-toggle-box:hover { border-color: var(--violet-500); color: var(--fg); background: var(--surface-hover); }
 
+/* UI-only paid-plan gate (file/voice sending) -- placeholder styling,
+   final look pending a design pass alongside the record-button states
+   above and the clipboard-hint caption. */
+.locked-badge, .lock-icon { display: none; }
+.locked-toggle .locked-badge { display: block; font-size: 10.5px; color: var(--muted-2); margin-top: 3px; }
+.locked-toggle .lock-icon { display: inline; margin-right: 6px; cursor: pointer; }
+
 /* -- pairing success: a full-page beat of confirmation the instant a
    connection completes, for every path (scanned, typed, or scanned-with-
    camera) — not just a status line easy to miss. --------------------- */

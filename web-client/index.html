@@ -113,8 +113,17 @@
 
         <!-- Phase 2d: generic small files (PDF/.doc/.docx/.zip). Same
              P2P-first, encrypted-relay-fallback send path as photos and
-             links, targeting POST /items/file instead. -->
-        <button type="button" id="show-file-btn" class="text-toggle-box">Or send a file</button>
+             links, targeting POST /items/file instead.
+
+             UI-only paid-plan gate (no server-side change -- relay-server's
+             file support stays fully functional): locked by default,
+             tapping the lock icon 4 times within ~3s reveals it. See
+             setupPaidGate() in app.js. -->
+        <button type="button" id="show-file-btn" class="text-toggle-box locked-toggle">
+          <span class="lock-icon" id="file-lock-icon" aria-hidden="true">🔒</span>
+          <span class="toggle-label">Or send a file</span>
+          <span class="locked-badge">Paid plan only — coming soon</span>
+        </button>
         <div id="file-section" style="display:none">
           <input id="generic-file-input" type="file" accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed" hidden />
           <button type="button" id="choose-file-btn" class="link">Choose a file (PDF, Word doc, or ZIP)</button>
@@ -124,8 +133,12 @@
 
         <!-- Phase 2d: hold-to-record/release-to-send voice memo via
              MediaRecorder, sent over POST /items/voice (or the P2P data
-             channel) the same way. -->
-        <button type="button" id="show-voice-btn" class="text-toggle-box">Or send a voice memo</button>
+             channel) the same way. Same UI-only paid-plan gate as above. -->
+        <button type="button" id="show-voice-btn" class="text-toggle-box locked-toggle">
+          <span class="lock-icon" id="voice-lock-icon" aria-hidden="true">🔒</span>
+          <span class="toggle-label">Or send a voice memo</span>
+          <span class="locked-badge">Paid plan only — coming soon</span>
+        </button>
         <div id="voice-section" style="display:none">
           <button type="button" id="record-voice-btn" class="primary">Hold to record</button>
           <p class="waiting-text" id="voice-record-status"></p>

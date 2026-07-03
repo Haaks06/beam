@@ -1359,6 +1359,64 @@ if (showTextBtn && textSection) {
   });
 }
 
+// -- UI-only "paid plan" gate for file/voice sending ---------------------
+// No real billing exists yet -- this only withholds the send-file/
+// send-voice UI behind a lock icon until unlocked, purely client-side.
+// relay-server's file/voice item-type support is untouched and fully
+// functional; a request straight to POST /items/file or /items/voice
+// still works exactly as before regardless of this flag. Unlocking is a
+// single global switch (not per-feature) via a debug gesture: tapping
+// either feature's lock icon UNLOCK_TAP_COUNT times within
+// UNLOCK_TAP_WINDOW_MS, persisted in localStorage so it doesn't need
+// repeating on this device once found.
+const PAID_UNLOCK_KEY = 'paidFeaturesUnlocked';
+const UNLOCK_TAP_COUNT = 4;
+const UNLOCK_TAP_WINDOW_MS = 3000;
+
+function isPaidUnlocked() {
+  return localStorage.getItem(PAID_UNLOCK_KEY) === 'true';
+}
+
+const paidGateRefreshers = [];
+
+function unlockPaidFeatures() {
+  localStorage.setItem(PAID_UNLOCK_KEY, 'true');
+  for (const refresh of paidGateRefreshers) refresh();
+}
+
+// Wires one locked "Or send a ..." toggle. While locked, clicking the
+// toggle itself does nothing (the locked message is already visible,
+// nothing further to reveal); the lock icon inside it is the hidden debug
+// unlock. Once unlocked, behaves exactly like an ordinary toggle
+// (onToggle runs on click, same as before this gate existed).
+function setupPaidGate(toggleBtn, lockIcon, onToggle) {
+  if (!toggleBtn || !lockIcon) return;
+  let tapTimes = [];
+
+  function refresh() {
+    toggleBtn.classList.toggle('locked-toggle', !isPaidUnlocked());
+  }
+  paidGateRefreshers.push(refresh);
+  refresh();
+
+  lockIcon.addEventListener('click', (event) => {
+    event.stopPropagation(); // don't also fire the toggle button's own click handler below
+    if (isPaidUnlocked()) return;
+    const now = Date.now();
+    tapTimes = tapTimes.filter((t) => now - t < UNLOCK_TAP_WINDOW_MS);
+    tapTimes.push(now);
+    if (tapTimes.length >= UNLOCK_TAP_COUNT) {
+      tapTimes = [];
+      unlockPaidFeatures();
+    }
+  });
+
+  toggleBtn.addEventListener('click', () => {
+    if (!isPaidUnlocked()) return;
+    onToggle();
+  });
+}
+
 // -- Phase 2d: generic file picker (PDF/.doc/.docx/.zip) -----------------
 // Same P2P-first, encrypted-relay-fallback shape as sendPhotoBtn's
 // handler, targeting /items/file instead.
@@ -1371,12 +1429,11 @@ const selectedFileNameEl = document.getElementById('selected-file-name');
 const sendFileBtn = document.getElementById('send-file-btn');
 let selectedGenericFile = null;
 
-if (showFileBtn && fileSection) {
-  showFileBtn.addEventListener('click', () => {
-    const willShow = fileSection.style.display === 'none';
-    fileSection.style.display = willShow ? 'block' : 'none';
-  });
-}
+setupPaidGate(showFileBtn, document.getElementById('file-lock-icon'), () => {
+  if (!fileSection) return;
+  const willShow = fileSection.style.display === 'none';
+  fileSection.style.display = willShow ? 'block' : 'none';
+});
 chooseFileBtn?.addEventListener('click', () => genericFileInput.click());
 genericFileInput?.addEventListener('change', () => {
   selectedGenericFile = genericFileInput.files[0] || null;
@@ -1451,12 +1508,11 @@ const voiceSection = document.getElementById('voice-section');
 const recordVoiceBtn = document.getElementById('record-voice-btn');
 const voiceRecordStatus = document.getElementById('voice-record-status');
 
-if (showVoiceBtn && voiceSection) {
-  showVoiceBtn.addEventListener('click', () => {
-    const willShow = voiceSection.style.display === 'none';
-    voiceSection.style.display = willShow ? 'block' : 'none';
-  });
-}
+setupPaidGate(showVoiceBtn, document.getElementById('voice-lock-icon'), () => {
+  if (!voiceSection) return;
+  const willShow = voiceSection.style.display === 'none';
+  voiceSection.style.display = willShow ? 'block' : 'none';
+});
 
 let voiceRecorder = null;
 let voiceChunks = [];
