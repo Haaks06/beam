@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beam — send it now, forget it happened</title>
+  <meta name="description" content="Beam moves a link or photo from your phone to your PC in real time, over the real internet — no accounts, no history. Every pairing gets a 2-minute window, then the relay forgets everything." />
+  <meta name="theme-color" content="#050308" />
+  <link rel="icon" href="/icons/icon-32.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Beam — send it now, forget it happened" />
+  <meta property="og:description" content="Phone to PC, over the real internet. No accounts, no history — every pairing forgets itself after 2 minutes." />
+  <meta property="og:image" content="/beam-logo.jpg" />
+  <meta name="twitter:card" content="summary" />
+
+  <link rel="stylesheet" href="/src/landing.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="ambient-mark" aria-hidden="true"></div>
+  <div class="ambient-grid" aria-hidden="true"></div>
+
+  <!-- ==================================================================
+       Icon sprite — every icon on this page is a <use> against one of
+       these <symbol> definitions, styled by the .icon utility class.
+       ================================================================== -->
+  <svg class="visually-hidden" aria-hidden="true" focusable="false">
+    <symbol id="icon-image" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+      <circle cx="8.5" cy="9.5" r="1.5"></circle>
+      <path d="m21 15-5-5L5 20"></path>
+    </symbol>
+    <symbol id="icon-link" viewBox="0 0 24 24">
+      <path d="M9 17H7a5 5 0 0 1 0-10h2"></path>
+      <path d="M15 7h2a5 5 0 0 1 0 10h-2"></path>
+      <line x1="8" y1="12" x2="16" y2="12"></line>
+    </symbol>
+    <symbol id="icon-monitor" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="13" rx="2"></rect>
+      <line x1="8" y1="21" x2="16" y2="21"></line>
+      <line x1="12" y1="17" x2="12" y2="21"></line>
+    </symbol>
+    <symbol id="icon-phone" viewBox="0 0 24 24">
+      <rect x="6" y="2" width="12" height="20" rx="2.5"></rect>
+      <line x1="10" y1="19" x2="14" y2="19"></line>
+    </symbol>
+    <symbol id="icon-share" viewBox="0 0 24 24">
+      <path d="M12 15V3"></path>
+      <path d="m7 8 5-5 5 5"></path>
+      <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"></path>
+    </symbol>
+    <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.38 7.86 10.9.58.1.79-.25.79-.55v-2.14c-3.2.7-3.87-1.36-3.87-1.36-.53-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.69.08-.69 1.16.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.73-1.54-2.56-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11.06 11.06 0 0 1 5.78 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.83 1.18 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.79 1.06.79 2.13v3.16c0 .3.2.65.8.54A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z"></path>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24">
+      <path d="M12 2 4 5.5V11c0 5.25 3.4 9.9 8 11 4.6-1.1 8-5.75 8-11V5.5L12 2Z"></path>
+      <path d="m9 12 2 2 4-4.5"></path>
+    </symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M12 7v5l3.5 2"></path>
+    </symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M3 12h18"></path>
+      <path d="M12 3c2.5 2.5 3.8 5.6 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3Z"></path>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24">
+      <path d="M4 12l6 6L20 6"></path>
+    </symbol>
+    <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+      <path d="M5 12h14"></path>
+      <path d="m13 6 6 6-6 6"></path>
+    </symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24">
+      <path d="M4 7h16"></path>
+      <path d="M4 12h16"></path>
+      <path d="M4 17h16"></path>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24">
+      <path d="M6 6l12 12"></path>
+      <path d="M18 6 6 18"></path>
+    </symbol>
+    <symbol id="icon-code" viewBox="0 0 24 24">
+      <path d="m8 6-5 6 5 6"></path>
+      <path d="m16 6 5 6-5 6"></path>
+    </symbol>
+  </svg>
+
+  <!-- ==================================================================
+       Nav
+       ================================================================== -->
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="nav-brand" href="#top">
+        <img src="/beam-logo.jpg" alt="" width="30" height="30" />
+        <span>Beam</span>
+      </a>
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#platforms">Get Beam</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a class="nav-gh" href="https://github.com/Haaks06/beam" target="_blank" rel="noopener" aria-label="Beam on GitHub">
+          <svg class="icon" aria-hidden="true"><use href="#icon-github"></use></svg>
+        </a>
+        <a class="btn btn-primary btn-sm desktop-only" href="/app">Open Beam</a>
+        <button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-drawer">
+          <svg class="icon" id="nav-toggle-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+          <span class="visually-hidden">Toggle menu</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="nav-drawer" id="nav-drawer">
+    <a class="desktop-only" href="#how">How it works</a>
+    <a class="desktop-only" href="#privacy">Privacy</a>
+    <a href="#platforms">Get Beam</a>
+    <a href="https://github.com/Haaks06/beam" target="_blank" rel="noopener">Source on GitHub</a>
+    <a class="btn btn-primary" href="/app">Open Beam</a>
+  </div>
+
+  <main id="main">
+    <!-- ================================================================
+         Hero
+         ================================================================ -->
+    <section class="hero" id="top">
+      <div class="container hero-content">
+        <p class="eyebrow">Phone → PC</p>
+        <h1>Send it. It lands.<br /><span class="grad">Then Beam forgets.</span></h1>
+        <p class="hero-sub">
+          Beam moves a link or photo from your phone to your PC in real
+          time — over the real internet, not just shared Wi-Fi. No accounts,
+          no sign-in, no history. Just a 2-minute window to send, then the
+          relay wipes the slate clean.
+        </p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="/app">
+            Open Beam
+            <svg class="icon" aria-hidden="true" style="width:16px;height:16px"><use href="#icon-arrow-right"></use></svg>
+          </a>
+          <a class="btn-arrow desktop-only" href="https://github.com/Haaks06/beam/releases/latest/download/Beam-Setup-Windows.exe">
+            Download for Windows
+            <svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg>
+          </a>
+        </div>
+        <p class="hero-trust">Free<span class="dot">·</span>No account required<span class="dot">·</span>Works over cellular data</p>
+      </div>
+
+      <div class="beam-visual desktop-only" aria-hidden="true">
+        <div class="device-frame device-phone">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="device-notch"></div>
+          <div class="device-content">
+            <svg class="icon" aria-hidden="true"><use href="#icon-image"></use></svg>
+            <span>SENDING</span>
+          </div>
+        </div>
+
+        <div class="beam-link">
+          <span class="beam-link-timer" id="hero-timer">01:58</span>
+          <span class="beam-link-line"></span>
+          <span class="beam-link-photon"></span>
+        </div>
+
+        <div class="device-frame device-pc">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          <div class="device-content">
+            <svg class="icon" aria-hidden="true"><use href="#icon-monitor"></use></svg>
+            <span>RECEIVING</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone-width only: a short animated pairing walkthrough that
+           doubles as this page's "how it works" for phone visitors, plus
+           the one action that matters — right below the fold, no
+           scrolling through a brochure required. -->
+      <div class="mobile-walk">
+        <div class="walk-card">
+          <ol class="walk-stage">
+            <li class="walk-step walk-step-1">
+              <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-phone"></use></svg></span>
+              <span class="walk-num">Step 1</span>
+              <p class="walk-title">Open Beam on both</p>
+              <p class="walk-sub">Your phone and your PC — or any two devices.</p>
+            </li>
+            <li class="walk-step walk-step-2">
+              <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg></span>
+              <span class="walk-num">Step 2</span>
+              <p class="walk-title">Scan or type the code</p>
+              <p class="walk-sub">One device shows it, the other enters it. No login, ever.</p>
+            </li>
+            <li class="walk-step walk-step-3">
+              <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg></span>
+              <span class="walk-num">Step 3</span>
+              <p class="walk-title">2 minutes to send</p>
+              <p class="walk-sub">Then the relay forgets everything. Pair again anytime.</p>
+            </li>
+          </ol>
+          <div class="walk-dots" aria-hidden="true">
+            <span class="walk-dot walk-dot-1"></span><span class="walk-dot walk-dot-2"></span><span class="walk-dot walk-dot-3"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         How it works
+         ================================================================ -->
+    <section class="section desktop-only" id="how">
+      <div class="container">
+        <div class="section-head centered reveal">
+          <p class="eyebrow" style="justify-content:center">How it works</p>
+          <h2 class="section-title-lg">Three steps, no learning curve</h2>
+          <p class="section-lede">Beam is one button, not a settings menu. Pair, send, and let the 2-minute clock do the cleanup for you.</p>
+        </div>
+
+        <div class="steps">
+          <article class="step-card reveal">
+            <p class="step-num">01</p>
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-phone"></use></svg></span>
+            <h3>Pair</h3>
+            <p>Open Beam on both devices. Scan a QR code or type a 6-character pairing code — no login, ever.</p>
+          </article>
+          <article class="step-card reveal">
+            <p class="step-num">02</p>
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg></span>
+            <h3>Send</h3>
+            <p>Drop a photo, paste a link, or type a note. It's on the wire and landing on the other device before you can second-guess it.</p>
+          </article>
+          <article class="step-card reveal">
+            <p class="step-num">03</p>
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg></span>
+            <h3>Forgotten</h3>
+            <p>Your 2-minute window closes and the relay deletes both devices, every item, every upload. Pair again next time you need it.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         Alternating features (desktop/tablet only — phone visitors get
+         the condensed animated walkthrough in the hero instead)
+         ================================================================ -->
+    <section class="section desktop-only">
+      <div class="container">
+
+        <div class="feature reveal">
+          <div class="feature-copy">
+            <p class="eyebrow">Ephemeral by design</p>
+            <h2>Built to forget you</h2>
+            <p>
+              Most tools want to remember everything about you, forever.
+              Beam does the opposite. Two devices pair, get exactly two
+              minutes to send and receive, and then the relay deletes
+              every device, every item, and every uploaded file it was
+              holding — no persistent link between your phone and your
+              PC survives the session.
+            </p>
+            <ul class="feature-list">
+              <li><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>No accounts to create or passwords to remember</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>Capped at exactly two devices per pairing</li>
+              <li><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>Nothing left behind for the relay to leak</li>
+            </ul>
+            <a class="btn-arrow" href="https://github.com/Haaks06/beam/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noopener">
+              Read the full threat model
+              <svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg>
+            </a>
+          </div>
+          <div class="feature-visual" aria-hidden="true">
+            <div class="timer-ring">
+              <svg viewBox="0 0 160 160">
+                <circle class="track" cx="80" cy="80" r="70"></circle>
+                <circle class="progress" cx="80" cy="80" r="70" style="stroke-dashoffset: 130;"></circle>
+              </svg>
+              <div class="timer-ring-label">
+                <span class="time" id="ring-timer">01:47</span>
+                <span class="cap">until forgotten</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature reverse reveal">
+          <div class="feature-copy">
+            <p class="eyebrow">Cross-platform reach</p>
+            <h2>One app. Every screen. Zero setup.</h2>
+            <p>
+              Beam isn't picky about what you're holding. It's a small,
+              always-on tray app on Windows, an installable app that
+              works instantly in any phone's browser with zero app-store
+              friction, and on iOS it shows up right inside the native
+              Share Sheet.
+            </p>
+            <a class="btn-arrow" href="#platforms">
+              See every platform
+              <svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg>
+            </a>
+          </div>
+          <div class="feature-visual" aria-hidden="true">
+            <div class="tile-trio">
+              <div class="tile">
+                <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-monitor"></use></svg></span>
+                <div class="tile-text"><strong>Windows</strong><span>Always-running tray app</span></div>
+              </div>
+              <div class="tile">
+                <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-phone"></use></svg></span>
+                <div class="tile-text"><strong>Any phone, any browser</strong><span>Installable PWA, no store needed</span></div>
+              </div>
+              <div class="tile">
+                <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-share"></use></svg></span>
+                <div class="tile-text"><strong>iOS</strong><span>Native Share Sheet via a free Shortcut</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature reveal">
+          <div class="feature-copy">
+            <p class="eyebrow">Real internet, not just Wi-Fi</p>
+            <h2>Not AirDrop with extra steps</h2>
+            <p>
+              AirDrop-style tools only work when both devices share the
+              same Wi-Fi network. Beam relays over the real internet, so
+              your phone on cellular data can reach your PC across the
+              house, across town, or across a conference room you're not
+              even connected to.
+            </p>
+          </div>
+          <div class="feature-visual" aria-hidden="true">
+            <div class="reach-visual">
+              <div class="reach-globe">
+                <svg class="icon" aria-hidden="true" style="width:44px;height:44px"><use href="#icon-globe"></use></svg>
+              </div>
+              <p class="reach-caption">Wi-Fi, cellular, different networks entirely — if both devices can reach the internet, Beam works.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================================================================
+         Privacy band (desktop/tablet only)
+         ================================================================ -->
+    <section class="section desktop-only" id="privacy">
+      <div class="container">
+        <div class="feature reverse reveal">
+          <div class="feature-copy">
+            <p class="eyebrow">Private by design</p>
+            <h2>Private by design, not by promise</h2>
+            <p>
+              Every device is authenticated with a long random token
+              scoped to its own pairing — a stranger can't read your
+              items, drop into your pairing, or make it a threesome.
+              The source is public, so you don't have to take our word
+              for any of this.
+            </p>
+            <a class="btn-arrow" href="https://github.com/Haaks06/beam" target="_blank" rel="noopener">
+              Browse the source on GitHub
+              <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
+            </a>
+          </div>
+          <div class="feature-visual" aria-hidden="true">
+            <div class="shield-visual">
+              <span class="shield-badge"><svg class="icon" aria-hidden="true"><use href="#icon-shield"></use></svg></span>
+              <div class="shield-caption">
+                <div><strong>2</strong><span>devices per pairing</span></div>
+                <div><strong>2 min</strong><span>session lifetime</span></div>
+                <div><strong>0</strong><span>accounts required</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         Platforms grid
+         ================================================================ -->
+    <section class="section" id="platforms">
+      <div class="container">
+        <div class="section-head centered reveal">
+          <p class="eyebrow" style="justify-content:center">Get Beam</p>
+          <h2 class="section-title-lg">Wherever you are, Beam's there too</h2>
+          <p class="section-lede">Pick the device in front of you — there's no wrong way in.</p>
+        </div>
+
+        <div class="platform-grid">
+          <article class="platform-card reveal desktop-only">
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-monitor"></use></svg></span>
+            <h3>Windows</h3>
+            <p>A small tray app that's always ready. Get a notification and an auto-saved file the moment something lands.</p>
+            <a class="btn btn-sm" href="https://github.com/Haaks06/beam/releases/latest/download/Beam-Setup-Windows.exe">Download for Windows</a>
+          </article>
+          <article class="platform-card reveal desktop-only">
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-phone"></use></svg></span>
+            <h3>Any phone, any browser</h3>
+            <p>An installable PWA that works instantly with zero install — add it to your home screen for one-tap access.</p>
+            <a class="btn btn-sm" href="/app">Open Beam</a>
+          </article>
+          <article class="platform-card reveal">
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-share"></use></svg></span>
+            <h3>iOS Share Sheet</h3>
+            <p>A free Apple Shortcut puts Beam right in your Share Sheet, alongside AirDrop — no App Store, no account. Takes about 5 minutes to set up once, in the Shortcuts app.</p>
+            <a class="btn btn-sm" href="https://github.com/Haaks06/beam/tree/main/ios-shortcut" target="_blank" rel="noopener">
+              Setup guide
+            </a>
+          </article>
+          <article class="platform-card reveal desktop-only">
+            <span class="icon-badge"><svg class="icon" aria-hidden="true"><use href="#icon-github"></use></svg></span>
+            <h3>Open source</h3>
+            <p>MIT-flavored hobby project, source and all. Read the code, self-host your own relay, or send a pull request.</p>
+            <a class="btn-arrow" href="https://github.com/Haaks06/beam" target="_blank" rel="noopener">
+              View on GitHub
+              <svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg>
+            </a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         Final CTA (desktop/tablet only — phone visitors already have the
+         persistent sticky "Open Beam" bar doing this job continuously, so
+         a final nudge here would just be a seventh copy of the same button)
+         ================================================================ -->
+    <section class="section desktop-only">
+      <div class="container">
+        <div class="cta-band reveal">
+          <h2>Got something to send?</h2>
+          <p>Open Beam and you're paired in about five seconds flat — no account, no setup, no strings attached.</p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="/app">
+              Open Beam
+              <svg class="icon" aria-hidden="true" style="width:16px;height:16px"><use href="#icon-arrow-right"></use></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================================================================
+       Footer
+       ================================================================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a class="nav-brand" href="#top" tabindex="-1">
+            <img src="/beam-logo.jpg" alt="" width="30" height="30" />
+            <span>Beam</span>
+          </a>
+          <p>Link and photo handoff from your phone to your PC, over the real internet. No accounts, no history — every pairing forgets itself in two minutes.</p>
+          <div class="footer-social">
+            <a class="nav-gh" href="https://github.com/Haaks06/beam" target="_blank" rel="noopener" aria-label="Beam on GitHub">
+              <svg class="icon" aria-hidden="true"><use href="#icon-github"></use></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="/app">Open Beam</a></li>
+            <li class="desktop-only"><a href="https://github.com/Haaks06/beam/releases/latest/download/Beam-Setup-Windows.exe">Download for Windows</a></li>
+            <li><a href="https://github.com/Haaks06/beam" target="_blank" rel="noopener">Source on GitHub</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Learn</h4>
+          <ul>
+            <li class="desktop-only"><a href="#how">How it works</a></li>
+            <li><a href="https://github.com/Haaks06/beam/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noopener">Threat model</a></li>
+            <li><a href="https://github.com/Haaks06/beam/blob/main/docs/HOSTING.md" target="_blank" rel="noopener">Self-host it</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Get Beam</h4>
+          <ul>
+            <li class="desktop-only"><a href="#platforms">Windows</a></li>
+            <li><a href="#platforms">Any phone, any browser</a></li>
+            <li><a href="https://github.com/Haaks06/beam/tree/main/ios-shortcut" target="_blank" rel="noopener">iOS Shortcut</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>© 2026 Beam. A hobby project, not a company.</span>
+        <span>No accounts<span class="dot">·</span>No tracking<span class="dot">·</span>Nothing kept longer than 2 minutes</span>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/landing.js"></script>
+</body>
+</html>
