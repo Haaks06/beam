@@ -27,11 +27,6 @@
   </header>
 
   <section id="start-section">
-    <!-- Phase 2c: populated by trust.js's listTrustedDevices() -- hidden
-         (and left empty) entirely until at least one device has been
-         remembered, so a first-time visitor sees exactly what they always
-         have: one button. -->
-    <div id="trusted-devices-list" style="display:none"></div>
     <button id="connect-btn" class="primary connect-btn">Connect to Beam</button>
   </section>
 
@@ -89,15 +84,6 @@
       <button id="repair-link" class="link">Start over</button>
     </div>
 
-    <!-- Phase 2c: opt-in, off by default. Enabling this is the one user
-         action that kicks off the whole trusted-device handshake (see
-         trust.js) -- the other device doesn't need to do anything, it
-         auto-replies once it receives the handshake. -->
-    <label class="remember-toggle">
-      <input type="checkbox" id="remember-pairing-toggle" />
-      <span>Remember this pairing for next time</span>
-    </label>
-
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="send">Send</button>
       <button class="tab-btn" data-tab="receive">Receive</button>
@@ -127,8 +113,17 @@
 
         <!-- Phase 2d: generic small files (PDF/.doc/.docx/.zip). Same
              P2P-first, encrypted-relay-fallback send path as photos and
-             links, targeting POST /items/file instead. -->
-        <button type="button" id="show-file-btn" class="text-toggle-box">Or send a file</button>
+             links, targeting POST /items/file instead.
+
+             UI-only paid-plan gate (no server-side change -- relay-server's
+             file support stays fully functional): locked by default,
+             tapping the lock icon 4 times within ~3s reveals it. See
+             setupPaidGate() in app.js. -->
+        <button type="button" id="show-file-btn" class="text-toggle-box locked-toggle">
+          <span class="lock-icon" id="file-lock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+          <span class="toggle-label">Or send a file</span>
+          <span class="locked-badge">Paid plan only — coming soon</span>
+        </button>
         <div id="file-section" style="display:none">
           <input id="generic-file-input" type="file" accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed" hidden />
           <button type="button" id="choose-file-btn" class="link">Choose a file (PDF, Word doc, or ZIP)</button>
@@ -138,17 +133,33 @@
 
         <!-- Phase 2d: hold-to-record/release-to-send voice memo via
              MediaRecorder, sent over POST /items/voice (or the P2P data
-             channel) the same way. -->
-        <button type="button" id="show-voice-btn" class="text-toggle-box">Or send a voice memo</button>
+             channel) the same way. Same UI-only paid-plan gate as above. -->
+        <button type="button" id="show-voice-btn" class="text-toggle-box locked-toggle">
+          <span class="lock-icon" id="voice-lock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+          <span class="toggle-label">Or send a voice memo</span>
+          <span class="locked-badge">Paid plan only — coming soon</span>
+        </button>
         <div id="voice-section" style="display:none">
-          <button type="button" id="record-voice-btn" class="primary">Hold to record</button>
-          <p class="waiting-text" id="voice-record-status"></p>
+          <button type="button" id="record-voice-btn" class="record-btn">
+            <span class="record-visual" aria-hidden="true">
+              <span class="record-ring"></span>
+              <svg class="record-icon mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg>
+              <svg class="record-icon check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"></path></svg>
+              <span class="record-waves"><span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span></span>
+            </span>
+            <span class="record-label">Hold to record</span>
+          </button>
+          <p class="waiting-text" id="voice-record-status" aria-live="polite"></p>
         </div>
       </section>
     </div>
 
     <div class="tab-panel" id="tab-receive" style="display:none">
       <section id="received-section">
+        <p class="clipboard-hint">
+          <svg class="clipboard-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="8.01"></line><path d="M11 12h1v4h1"></path></svg>
+          <span>Only links are copied to your clipboard automatically.</span>
+        </p>
         <div id="received-empty">Nothing yet — anything the other device sends shows up here live.</div>
         <div id="received-list"></div>
       </section>

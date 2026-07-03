@@ -20,6 +20,16 @@ const { createTray } = require('./tray');
 const RELAY_URL = process.env.RELAY_URL || 'https://beam-wckn2w.fly.dev';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 
+// Duplicated from web-client/src/app.js's looksLikeLink (same reasoning,
+// see its comment there) rather than shared, since this runs in a
+// separate Node/CommonJS process from the browser code -- not worth a
+// shared package for one three-line regex check.
+function looksLikeLink(value) {
+  const trimmed = (value || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  return /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(trimmed);
+}
+
 let tray;
 let mainWindow;
 let resizeTimer;
@@ -211,15 +221,24 @@ app.whenReady().then(() => {
     try {
       if (item.type === 'link') {
         saveLink(item);
-        // Electron's native clipboard module, not the web Clipboard API —
-        // more reliable than navigator.clipboard from a background renderer
-        // context, and this is exactly what earlier versions of this app
-        // did before the ephemeral-pairing rewrite dropped it. The whole
-        // point of beaming a link over is to use it right away.
-        clipboard.writeText(item.content);
-        lastReceivedLink = item.content;
-        trayHandle.setLastLinkAvailable(true);
-        notify('Link received — copied to clipboard', item.content);
+        // Only an actual link auto-copies -- a plain-text note sent
+        // through the same field still gets saved to links.jsonl (it's
+        // just a log file, nothing overwritten by keeping it there) but
+        // doesn't silently land on the clipboard, which used to happen for
+        // every 'link'-type item regardless of whether it looked like one.
+        if (looksLikeLink(item.content)) {
+          // Electron's native clipboard module, not the web Clipboard API —
+          // more reliable than navigator.clipboard from a background
+          // renderer context, and this is exactly what earlier versions of
+          // this app did before the ephemeral-pairing rewrite dropped it.
+          // The whole point of beaming a link over is to use it right away.
+          clipboard.writeText(item.content);
+          lastReceivedLink = item.content;
+          trayHandle.setLastLinkAvailable(true);
+          notify('Link received — copied to clipboard', item.content);
+        } else {
+          notify('Text received', item.content);
+        }
       } else if (item.type === 'photo') {
         const savedPath = await savePhoto(item, relayUrl, token);
         notify('Photo received', savedPath);

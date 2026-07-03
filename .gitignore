@@ -10,3 +10,4 @@ web-client/dist/
 .DS_Store
 Thumbs.db
 .claude/
+dist-artifacts/

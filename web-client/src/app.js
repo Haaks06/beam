@@ -2,15 +2,6 @@ import './styles.css';
 import jsQR from 'jsqr';
 import { initP2P, bufToBase64, base64ToBuf } from './p2p.js';
 import { openDb, CONFIG_STORE, saveReceivedItem, listReceivedItems, clearReceivedItems } from './idb.js';
-import {
-  isControlMessage,
-  generateHandshake,
-  handleIncomingHandshake,
-  listTrustedDevices,
-  saveTrustedDevice,
-  removeTrustedDevice,
-  attemptAutoReconnect,
-} from './trust.js';
 
 async function setConfigValue(key, value) {
   const db = await openDb();
@@ -151,41 +142,6 @@ function setP2pIndicator(mode) {
   if (mode === 'direct' || mode === 'relayed') p2pIndicatorEl.classList.add(mode);
 }
 
-// Phase 2c: sends a trust-handshake control message over whichever
-// channel is currently active -- the exact same P2P-direct-else-
-// encrypted-relay path real items use (see the send-link-btn handler
-// below), reused rather than duplicated. The relay-fallback case has no
-// item type of its own to use (POST /items/link always stores type
-// 'link' server-side no matter what), so it travels disguised as an
-// ordinary encrypted link -- see renderItem()'s reveal-after-decrypt
-// check for the receiving half of that.
-async function sendControlMessage(message) {
-  if (!p2pController) return;
-  await p2pController.waitUntilReady();
-  if (p2pController.trySendDirect(message)) return;
-  const { relayUrl, token } = loadConfig();
-  const encryptedBuf = await p2pController.encryptForRelay(new TextEncoder().encode(JSON.stringify(message)));
-  await fetch(`${relayUrl}/items/link`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: bufToBase64(encryptedBuf), encrypted: true }),
-  }).catch(() => {
-    // Best-effort -- if this doesn't land, the "Remember this pairing"
-    // toggle simply doesn't take effect this session; nothing else
-    // depends on it succeeding.
-  });
-}
-
-async function handleTrustHandshake(message) {
-  const { shouldReply } = await handleIncomingHandshake(message);
-  if (shouldReply) {
-    // First time seeing this id -- reply with the same id+secret but our
-    // own label, so the original sender ends up with the correct label
-    // too, from the one action the user actually took (enabling the
-    // toggle on just one side).
-    await sendControlMessage({ type: message.type, id: message.id, secret: message.secret, label: deviceLabel() });
-  }
-}
 // Bumped every time we (re-)enter the invite flow or leave it (Cancel,
 // pairing completing, page reload's own refreshState() call, etc). A
 // /pair/init response's continuation only applies its result if this still
@@ -195,18 +151,20 @@ let inviteGeneration = 0;
 // There's no upfront "I want to send" / "I want to receive" choice anymore
 // — connecting always shows your own QR AND a code-entry field at once,
 // whichever side of the pairing actually completes it first. This only
-// picks a sensible default tab once paired: generating your own code
-// defaults to Send, claiming someone else's (typed, scanned, or via a
-// scanned link) defaults to Receive.
+// picks a sensible default tab once paired: claiming someone else's code
+// (typed, scanned, or via a scanned link) defaults to Send -- you scanned
+// it because you want to send THEM something -- and generating your own
+// code defaults to Receive, since that device is the one waiting for
+// something to arrive.
 //
 // Also doubles as the deterministic WebRTC offerer/answerer split (see
 // enterActiveState's isOfferer) -- which makes persisting it across a
 // reload load-bearing, not just cosmetic. Found by testing a mid-session
 // reload: without persistence this resets to the 'send' default on every
-// reload, and if the device that originally claimed the code ('receive')
-// reloads, it silently starts computing the SAME role as the other side
-// (both non-offerers), so the offer/answer exchange never happens and the
-// P2P attempt hangs in 'connecting' forever with no error.
+// reload, and if the device that originally claimed the code reloads, it
+// silently starts computing the SAME role as the other side (both
+// non-offerers), so the offer/answer exchange never happens and the P2P
+// attempt hangs in 'connecting' forever with no error.
 let lastIntent = localStorage.getItem('lastIntent') || 'send';
 function setLastIntent(intent) {
   lastIntent = intent;
@@ -268,90 +226,12 @@ function enterStartState() {
   p2pController = null;
   if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
   advancedSection.style.display = 'none';
-  renderTrustedDevicesList();
   // Whatever P2P-direct items got locally cached for the session that's
   // now over (see saveReceivedItem in loadBacklog/renderItem below) are no
   // longer needed -- prune here so the store can't grow across many past
   // sessions.
   clearReceivedItems().catch(() => {});
   showOnly('start');
-}
-
-// Phase 2c: the "Reconnect with [label]" list on the start screen. Hidden
-// entirely (see index.html) unless at least one device has been
-// remembered -- a first-time visitor's experience is completely
-// unchanged.
-const trustedDevicesListEl = document.getElementById('trusted-devices-list');
-async function renderTrustedDevicesList() {
-  if (!trustedDevicesListEl) return;
-  const devices = await listTrustedDevices();
-  trustedDevicesListEl.innerHTML = '';
-  if (devices.length === 0) {
-    trustedDevicesListEl.style.display = 'none';
-    return;
-  }
-  trustedDevicesListEl.style.display = 'block';
-  for (const device of devices) {
-    const card = document.createElement('div');
-    card.className = 'trusted-device-card';
-
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.textContent = device.label;
-    card.appendChild(label);
-
-    const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.gap = '8px';
-    actions.style.alignItems = 'center';
-
-    const reconnectBtn = document.createElement('button');
-    reconnectBtn.type = 'button';
-    reconnectBtn.className = 'reconnect-btn';
-    reconnectBtn.textContent = 'Reconnect';
-    reconnectBtn.addEventListener('click', () => tryAutoReconnect(device, reconnectBtn));
-    actions.appendChild(reconnectBtn);
-
-    const forgetBtn = document.createElement('button');
-    forgetBtn.type = 'button';
-    forgetBtn.className = 'forget-btn';
-    forgetBtn.textContent = 'Forget';
-    forgetBtn.addEventListener('click', async () => {
-      await removeTrustedDevice(device.id);
-      renderTrustedDevicesList();
-    });
-    actions.appendChild(forgetBtn);
-
-    card.appendChild(actions);
-    trustedDevicesListEl.appendChild(card);
-  }
-}
-
-// Attempts the actual code-free reconnect (see trust.js's
-// attemptAutoReconnect) -- falls back to leaving the user on the normal
-// manual pairing screen if it doesn't succeed within its own timeout.
-async function tryAutoReconnect(device, triggerBtn) {
-  triggerBtn.disabled = true;
-  triggerBtn.textContent = 'Connecting…';
-  try {
-    const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
-    setStatus(`Reconnecting with ${device.label}…`);
-    const result = await attemptAutoReconnect(device, relayUrl, { deviceLabel });
-    if (!result) {
-      setStatus(`Couldn't auto-reconnect with ${device.label} — pair manually below.`, 'error');
-      connectBtn.click();
-      return;
-    }
-    await saveConfig({ relayUrl: result.relayUrl, token: result.token, expiresAt: result.expiresAt });
-    setLastIntent('send');
-    await showPairedAnimation();
-    enterActiveState();
-  } catch (err) {
-    setStatus(`Couldn't auto-reconnect: ${err.message}`, 'error');
-  } finally {
-    triggerBtn.disabled = false;
-    triggerBtn.textContent = 'Reconnect';
-  }
 }
 
 // A brief, unmissable confirmation the instant a pairing completes — shown
@@ -413,11 +293,12 @@ function enterActiveState() {
   // offer/answer/ICE, all over /signal) the moment a session goes active.
   // isOfferer needs to be a deterministic, already-established asymmetry
   // between the two devices rather than a race — lastIntent already
-  // captures exactly that: 'receive' means this device just claimed the
-  // other's pairing code (see claimPairingCode()), 'send' means it's the
-  // one that generated the code. Arbitrary which side offers as long as
-  // both sides agree, and they always do since it's derived the same way
-  // on both ends of one pairing.
+  // captures exactly that: 'send' means this device just claimed the
+  // other's pairing code (see claimPairingCode()) and defaults to the Send
+  // tab, 'receive' means it's the one that generated the code and is
+  // defaulting to Receive. Arbitrary which side offers as long as both
+  // sides agree, and they always do since it's derived the same way on
+  // both ends of one pairing.
   const { relayUrl: p2pRelayUrl, token: p2pToken } = loadConfig();
   p2pController?.teardown();
   p2pController = initP2P({
@@ -433,14 +314,17 @@ function enterActiveState() {
     // whole feature for anyone on the same network as their paired phone
     // (the P2P fast path's exact common case). Found by actually testing
     // the desktop app end-to-end rather than assuming Phase 2a's P2P work
-    // couldn't have affected it. isControlMessage guards out Phase 2c's
-    // trust-handshake messages, which arrive here undisguised (unlike the
-    // relay-fallback path, which disguises them as an encrypted 'link' —
-    // see handleTrustHandshake) and would otherwise get "saved" as a fake
-    // link.
+    // couldn't have affected it.
     onItem: (item) => {
       renderItem(item, { prepend: true });
-      if (!isControlMessage(item)) window.beamNative?.itemReceived(item, p2pRelayUrl, p2pToken);
+      window.beamNative?.itemReceived(item, p2pRelayUrl, p2pToken);
+      // Same auto-copy the SSE/relay-delivered path has always had (see
+      // connectReceivedFeed) -- found missing here entirely while testing
+      // this exact change: a P2P-direct arrival (the common case for a
+      // same-network pair) never triggered any clipboard copy at all,
+      // regardless of content type, so the transport mode silently
+      // determined whether this feature worked.
+      copyIfLink(item);
     },
   });
 
@@ -527,7 +411,10 @@ function pollInvite(relayUrl, code) {
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
         setMyRemoteAddr(data.remoteAddr);
-        setLastIntent('send');
+        // This device generated the code and is the one that was waiting —
+        // whoever just scanned/typed it did so because THEY want to send
+        // something, so the initiator's natural role is Receive.
+        setLastIntent('receive');
         await showPairedAnimation();
         enterActiveState();
       }
@@ -590,7 +477,10 @@ if (showAdvancedBtn && advancedSection) {
 }
 
 async function claimPairingCode(relayUrl, pairingCode) {
-  setLastIntent('receive');
+  // This device just scanned/typed someone else's code -- that's something
+  // you do because you want to send them something, not because you're
+  // waiting to receive.
+  setLastIntent('send');
   const res = await fetch(`${relayUrl}/pair/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -749,36 +639,6 @@ document.getElementById('invite-cancel-btn').addEventListener('click', () => {
 repairLink.addEventListener('click', () => enterStartState());
 document.getElementById('restart-btn').addEventListener('click', () => enterStartState());
 
-// Phase 2c: the one user action that kicks off the whole trusted-device
-// handshake -- the other device doesn't need to do anything itself, it
-// auto-replies on receipt (see handleTrustHandshake above). Unchecking
-// doesn't retract anything already sent; it just stops this device from
-// having offered a fresh one this session (there's no "forget" story for
-// a specific in-flight toggle, only for an already-saved device -- see
-// the start-screen list's forget button below).
-const rememberPairingToggle = document.getElementById('remember-pairing-toggle');
-if (rememberPairingToggle) {
-  rememberPairingToggle.addEventListener('change', async () => {
-    if (!rememberPairingToggle.checked) return;
-    rememberPairingToggle.disabled = true;
-    try {
-      const { id, secretB64, message } = generateHandshake(deviceLabel());
-      await sendControlMessage(message);
-      // Optimistic placeholder label -- overwritten with the other
-      // device's real label once its auto-reply arrives (see
-      // handleTrustHandshake's shouldReply guard, which is false for this
-      // exact id from here on, so the reply updates rather than re-sends).
-      await saveTrustedDevice({ id, label: 'trusted device', secret: secretB64 });
-      setStatus('Remembered — you can reconnect without a code next time.', 'success');
-    } catch (err) {
-      setStatus(`Couldn't remember this pairing: ${err.message}`, 'error');
-      rememberPairingToggle.checked = false;
-    } finally {
-      rememberPairingToggle.disabled = false;
-    }
-  });
-}
-
 // Opening another device's pairing link (path-based /ABC123, or the older
 // ?relay=&code=) pairs immediately rather than just prefilling the form, so
 // opening/scanning it is the whole interaction on the joining device.
@@ -843,6 +703,47 @@ function isHttpUrl(value) {
   }
 }
 
+// Broader than isHttpUrl on purpose, and used for a different decision:
+// isHttpUrl gates whether something renders as a clickable <a href> (strict
+// -- a bare "example.com" with no scheme is not a safe href target as-is),
+// this gates whether a received item is link-*like* enough to silently
+// land in the clipboard. The relay's own /items/link endpoint already
+// accepts arbitrary text, not just strict URLs (typing "example.com" or
+// pasting a plain note both work) -- this mirrors that same looseness for
+// the auto-copy decision, so "example.com" (no scheme) still auto-copies
+// while an ordinary sentence doesn't. Deliberately a lightweight pattern,
+// not a full URL parser: a scheme prefix, or the whole trimmed content
+// looking like host(.host)+.tld optionally followed by a path/query/
+// fragment/port -- not just any text that happens to mention a domain
+// somewhere in a sentence.
+function looksLikeLink(value) {
+  const trimmed = (value || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  return /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(trimmed);
+}
+
+// Shared by both live-arrival paths (SSE and P2P-direct, see
+// connectReceivedFeed and enterActiveState's onItem below) so a received
+// link auto-copies the same way regardless of which transport actually
+// delivered it -- found by testing that without this shared as one
+// function, it was easy for one path to have the check and the other not.
+// Only actual links auto-copy, not plain text/notes -- see looksLikeLink's
+// comment. A plain-text item still shows up normally in the Received list
+// and stays manually copyable via its copy-icon button (see
+// makeCopyButton), it just doesn't silently land in the clipboard on
+// arrival.
+function copyIfLink(item) {
+  if (item.type !== 'link' || !looksLikeLink(item.content)) return;
+  navigator.clipboard?.writeText(item.content).then(
+    () => setStatus(`Copied to clipboard: "${truncate(item.content, 60)}"`, 'success'),
+    () => {
+      // Some browsers refuse a clipboard write outside a direct user
+      // gesture (notably Safari) — not fatal, the item is still right
+      // there in the Received list to copy by hand.
+    }
+  );
+}
+
 const COPY_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 // Matches the checkmark already used for pair-success-badge elsewhere on
@@ -880,21 +781,7 @@ function makeCopyButton(text) {
 // before it can be shown — a P2P-received item (see p2p.js's onItem
 // callback) is never encrypted at the app level (WebRTC's own mandatory
 // DTLS already covers that path) and resolves through this immediately.
-//
-// Also where Phase 2c's trust-handshake control messages get intercepted
-// before they'd ever show up as a visible received item: a P2P-direct one
-// arrives with type === TRUST_CONTROL_TYPE directly; a relay-delivered one
-// is disguised as an encrypted 'link' (the relay's own POST /items/link
-// always stores type 'link' regardless of what the client actually means
-// by the content — there's no other item-shaped channel to use without a
-// new relay endpoint, which would defeat "purely client-side"), so it only
-// reveals itself as a control message after decryption.
 async function renderItem(item, { prepend, persist = true } = { prepend: true }) {
-  if (isControlMessage(item)) {
-    await handleTrustHandshake(item);
-    return;
-  }
-
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
 
@@ -929,21 +816,6 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
       // couldn't be read rather than silently rendering ciphertext as if
       // it were the real content.
       displayContent = '[Encrypted — could not decrypt]';
-    }
-  }
-
-  if (item.type === 'link') {
-    // A relay-delivered control message looks exactly like a normal
-    // encrypted link until decrypted -- this is that reveal.
-    let parsed;
-    try {
-      parsed = JSON.parse(displayContent);
-    } catch {
-      // Not JSON -- a completely ordinary link/text item, fall through.
-    }
-    if (isControlMessage(parsed)) {
-      await handleTrustHandshake(parsed);
-      return;
     }
   }
 
@@ -1230,29 +1102,14 @@ function connectReceivedFeed() {
     renderItem(item, { prepend: true });
     localStorage.setItem('lastSeenId', String(item.id));
     const { relayUrl, token } = loadConfig();
-    // Note: a relay-delivered trust-handshake control message is disguised
-    // as an ordinary encrypted 'link' (see handleTrustHandshake) and only
-    // reveals itself as such after renderItem() decrypts it above, so this
-    // guard catches the undisguised case only -- a narrower fix than the
-    // P2P-direct path's equivalent check above, which sees it before any
-    // disguise is possible. Known minor gap, not attempted here.
-    if (!isControlMessage(item)) window.beamNative?.itemReceived(item, relayUrl, token);
+    window.beamNative?.itemReceived(item, relayUrl, token);
     // Only a genuinely live arrival copies to clipboard — same reasoning as
     // land-in's animation only firing for live items, not backlog: copying
     // every item in a reconnect catch-up batch would silently clobber
     // whatever the user had just copied themselves. Restores what earlier
     // versions of the desktop app used to do (see saveHandlers.js's git
     // history) — beaming a link over is meant to be used right away.
-    if (item.type === 'link' && isHttpUrl(item.content)) {
-      navigator.clipboard?.writeText(item.content).then(
-        () => setStatus(`Copied to clipboard: "${truncate(item.content, 60)}"`, 'success'),
-        () => {
-          // Some browsers refuse a clipboard write outside a direct user
-          // gesture (notably Safari) — not fatal, the item is still right
-          // there in the Received list to copy by hand.
-        }
-      );
-    }
+    copyIfLink(item);
   };
   // Pushed by the relay the instant it deletes an expired session (see
   // relay-server/lib/sessionCleanup.js) — reacting to this beats waiting for
@@ -1502,6 +1359,64 @@ if (showTextBtn && textSection) {
   });
 }
 
+// -- UI-only "paid plan" gate for file/voice sending ---------------------
+// No real billing exists yet -- this only withholds the send-file/
+// send-voice UI behind a lock icon until unlocked, purely client-side.
+// relay-server's file/voice item-type support is untouched and fully
+// functional; a request straight to POST /items/file or /items/voice
+// still works exactly as before regardless of this flag. Unlocking is a
+// single global switch (not per-feature) via a debug gesture: tapping
+// either feature's lock icon UNLOCK_TAP_COUNT times within
+// UNLOCK_TAP_WINDOW_MS, persisted in localStorage so it doesn't need
+// repeating on this device once found.
+const PAID_UNLOCK_KEY = 'paidFeaturesUnlocked';
+const UNLOCK_TAP_COUNT = 4;
+const UNLOCK_TAP_WINDOW_MS = 3000;
+
+function isPaidUnlocked() {
+  return localStorage.getItem(PAID_UNLOCK_KEY) === 'true';
+}
+
+const paidGateRefreshers = [];
+
+function unlockPaidFeatures() {
+  localStorage.setItem(PAID_UNLOCK_KEY, 'true');
+  for (const refresh of paidGateRefreshers) refresh();
+}
+
+// Wires one locked "Or send a ..." toggle. While locked, clicking the
+// toggle itself does nothing (the locked message is already visible,
+// nothing further to reveal); the lock icon inside it is the hidden debug
+// unlock. Once unlocked, behaves exactly like an ordinary toggle
+// (onToggle runs on click, same as before this gate existed).
+function setupPaidGate(toggleBtn, lockIcon, onToggle) {
+  if (!toggleBtn || !lockIcon) return;
+  let tapTimes = [];
+
+  function refresh() {
+    toggleBtn.classList.toggle('locked-toggle', !isPaidUnlocked());
+  }
+  paidGateRefreshers.push(refresh);
+  refresh();
+
+  lockIcon.addEventListener('click', (event) => {
+    event.stopPropagation(); // don't also fire the toggle button's own click handler below
+    if (isPaidUnlocked()) return;
+    const now = Date.now();
+    tapTimes = tapTimes.filter((t) => now - t < UNLOCK_TAP_WINDOW_MS);
+    tapTimes.push(now);
+    if (tapTimes.length >= UNLOCK_TAP_COUNT) {
+      tapTimes = [];
+      unlockPaidFeatures();
+    }
+  });
+
+  toggleBtn.addEventListener('click', () => {
+    if (!isPaidUnlocked()) return;
+    onToggle();
+  });
+}
+
 // -- Phase 2d: generic file picker (PDF/.doc/.docx/.zip) -----------------
 // Same P2P-first, encrypted-relay-fallback shape as sendPhotoBtn's
 // handler, targeting /items/file instead.
@@ -1514,12 +1429,11 @@ const selectedFileNameEl = document.getElementById('selected-file-name');
 const sendFileBtn = document.getElementById('send-file-btn');
 let selectedGenericFile = null;
 
-if (showFileBtn && fileSection) {
-  showFileBtn.addEventListener('click', () => {
-    const willShow = fileSection.style.display === 'none';
-    fileSection.style.display = willShow ? 'block' : 'none';
-  });
-}
+setupPaidGate(showFileBtn, document.getElementById('file-lock-icon'), () => {
+  if (!fileSection) return;
+  const willShow = fileSection.style.display === 'none';
+  fileSection.style.display = willShow ? 'block' : 'none';
+});
 chooseFileBtn?.addEventListener('click', () => genericFileInput.click());
 genericFileInput?.addEventListener('change', () => {
   selectedGenericFile = genericFileInput.files[0] || null;
@@ -1594,23 +1508,81 @@ const voiceSection = document.getElementById('voice-section');
 const recordVoiceBtn = document.getElementById('record-voice-btn');
 const voiceRecordStatus = document.getElementById('voice-record-status');
 
-if (showVoiceBtn && voiceSection) {
-  showVoiceBtn.addEventListener('click', () => {
-    const willShow = voiceSection.style.display === 'none';
-    voiceSection.style.display = willShow ? 'block' : 'none';
-  });
-}
+setupPaidGate(showVoiceBtn, document.getElementById('voice-lock-icon'), () => {
+  if (!voiceSection) return;
+  const willShow = voiceSection.style.display === 'none';
+  voiceSection.style.display = willShow ? 'block' : 'none';
+});
 
 let voiceRecorder = null;
 let voiceChunks = [];
 let voiceStream = null;
 
+// A quick accidental tap on the record button used to start recording
+// immediately, which was easy to trigger by mistake. Now a press has to be
+// held past RECORD_ARM_DELAY_MS before it actually starts -- a tap shorter
+// than that does nothing at all. recordState drives both the button's
+// visual state (idle/arming/recording/sent, see styles.css) and the
+// control flow below.
+const RECORD_ARM_DELAY_MS = 350;
+let recordState = 'idle'; // 'idle' | 'arming' | 'recording' | 'sent'
+let armTimer = null;
+let sentResetTimer = null;
+// getUserMedia's permission prompt (first use) can take long enough that
+// the user releases before it resolves -- without tracking this, that
+// release would silently no-op (stopVoiceRecordingAndSend's own guard
+// bails out when voiceRecorder is still null) and recording would start
+// anyway right after release and never stop.
+let releaseRequestedWhileStarting = false;
+
+function setRecordState(state) {
+  recordState = state;
+  recordVoiceBtn.classList.remove('arming', 'recording', 'sent');
+  if (state !== 'idle') recordVoiceBtn.classList.add(state);
+}
+
+function beginRecordPress() {
+  if (recordState !== 'idle') return; // already arming/recording/sent -- ignore a duplicate press event
+  clearTimeout(sentResetTimer);
+  setRecordState('arming');
+  voiceRecordStatus.textContent = 'Keep holding…';
+  armTimer = setTimeout(() => {
+    armTimer = null;
+    startVoiceRecording();
+  }, RECORD_ARM_DELAY_MS);
+}
+
+function endRecordPress() {
+  if (recordState === 'arming') {
+    // Released before the arm delay elapsed -- exactly the accidental-tap
+    // case this is meant to absorb. Nothing was ever recorded.
+    clearTimeout(armTimer);
+    armTimer = null;
+    setRecordState('idle');
+    voiceRecordStatus.textContent = '';
+    return;
+  }
+  if (recordState === 'recording') {
+    if (!voiceRecorder) {
+      // Still waiting on getUserMedia -- see releaseRequestedWhileStarting's
+      // comment above. startVoiceRecording checks this flag once the
+      // recorder actually starts.
+      releaseRequestedWhileStarting = true;
+      return;
+    }
+    stopVoiceRecordingAndSend();
+  }
+}
+
 async function startVoiceRecording() {
   if (voiceRecorder) return; // already recording -- ignore a duplicate press
+  setRecordState('recording');
+  voiceRecordStatus.textContent = 'Recording… release to send';
   try {
     voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     voiceRecordStatus.textContent = `Couldn't access the microphone: ${err.message}`;
+    setRecordState('idle');
     return;
   }
   voiceChunks = [];
@@ -1619,12 +1591,17 @@ async function startVoiceRecording() {
     if (event.data.size > 0) voiceChunks.push(event.data);
   };
   voiceRecorder.start();
-  recordVoiceBtn.classList.add('recording');
-  voiceRecordStatus.textContent = 'Recording… release to send';
+  if (releaseRequestedWhileStarting) {
+    releaseRequestedWhileStarting = false;
+    stopVoiceRecordingAndSend();
+  }
 }
 
 async function stopVoiceRecordingAndSend() {
-  if (!voiceRecorder || voiceRecorder.state === 'inactive') return;
+  if (!voiceRecorder || voiceRecorder.state === 'inactive') {
+    setRecordState('idle');
+    return;
+  }
   const mimeType = voiceRecorder.mimeType || 'audio/webm';
   const stopped = new Promise((resolve) => {
     voiceRecorder.onstop = resolve;
@@ -1632,7 +1609,6 @@ async function stopVoiceRecordingAndSend() {
   voiceRecorder.stop();
   await stopped;
   for (const track of voiceStream.getTracks()) track.stop();
-  recordVoiceBtn.classList.remove('recording');
 
   const blob = new Blob(voiceChunks, { type: mimeType });
   voiceRecorder = null;
@@ -1641,12 +1617,14 @@ async function stopVoiceRecordingAndSend() {
 
   if (blob.size === 0) {
     voiceRecordStatus.textContent = 'Recording was empty — hold the button a moment longer.';
+    setRecordState('idle');
     return;
   }
 
   const { relayUrl, token } = loadConfig();
   if (!token) {
     voiceRecordStatus.textContent = 'Pair this device first.';
+    setRecordState('idle');
     return;
   }
   try {
@@ -1684,20 +1662,27 @@ async function stopVoiceRecordingAndSend() {
       if (res.status === 401) return enterEndedState();
       if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
     }
+    setRecordState('sent');
     voiceRecordStatus.textContent = `Sent (${sentDirect ? 'direct' : 'relayed'}) — hold to record another.`;
+    // "Sent" is a brief confirmation, not a sticky state -- back to idle
+    // once it's had a moment to register.
+    sentResetTimer = setTimeout(() => {
+      if (recordState === 'sent') setRecordState('idle');
+    }, 1500);
   } catch (err) {
     voiceRecordStatus.textContent = `Failed to send: ${err.message}`;
+    setRecordState('idle');
   }
 }
 
 if (recordVoiceBtn) {
-  recordVoiceBtn.addEventListener('mousedown', startVoiceRecording);
+  recordVoiceBtn.addEventListener('mousedown', beginRecordPress);
   recordVoiceBtn.addEventListener('touchstart', (event) => {
     event.preventDefault(); // avoid the synthetic mousedown that would otherwise also fire
-    startVoiceRecording();
+    beginRecordPress();
   });
   for (const evt of ['mouseup', 'mouseleave', 'touchend', 'touchcancel']) {
-    recordVoiceBtn.addEventListener(evt, stopVoiceRecordingAndSend);
+    recordVoiceBtn.addEventListener(evt, endRecordPress);
   }
 }
 
