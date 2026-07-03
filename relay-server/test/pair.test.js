@@ -151,3 +151,33 @@ test('a code minted by one inbox cannot leak a device into a different inbox', a
     .expect(200);
   assert.deepEqual(asOwnerB.body.items, []);
 });
+
+// Same-network hint (Phase 1c) — each endpoint hands back whichever
+// device is calling it its own apparent address, so client-side logic
+// (Phase 2b) can compare it against the other device's over the /signal
+// channel and decide whether to prefer local ICE candidates. Not
+// persisted anywhere; just computed per-request.
+test('POST /pair/claim includes the caller\'s remoteAddr', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+
+  const claimRes = await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
+    .expect(200);
+  assert.ok(typeof claimRes.body.remoteAddr === 'string' && claimRes.body.remoteAddr.length > 0);
+});
+
+test('GET /pair/status/:code includes the polling device\'s remoteAddr', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+
+  const statusRes = await request(app).get(`/pair/status/${initRes.body.pairingCode}`).expect(200);
+  assert.ok(typeof statusRes.body.remoteAddr === 'string' && statusRes.body.remoteAddr.length > 0);
+});
