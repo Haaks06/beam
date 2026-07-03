@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor, shell } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
@@ -11,7 +11,7 @@ app.setName('Beam');
 // Edit > Undo), and it doesn't match the frameless, themed rest of the app.
 Menu.setApplicationMenu(null);
 
-const { saveLink, savePhoto } = require('./saveHandlers');
+const { saveLink, savePhoto, saveFile, saveVoiceMemo, LINKS_DIR, PHOTOS_DIR, ensureFolders } = require('./saveHandlers');
 const { createTray } = require('./tray');
 
 // Packaged installs default to the hosted relay so they work with zero
@@ -24,6 +24,7 @@ let tray;
 let mainWindow;
 let resizeTimer;
 let hiddenSince = null;
+let lastReceivedLink = null;
 
 // Defense in depth, on top of the real fix (the exponential-backoff +
 // staleness watchdog in web-client/src/app.js, which is what actually
@@ -170,6 +171,8 @@ app.whenReady().then(() => {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
 
+  ensureFolders();
+
   const trayHandle = createTray({
     iconPath: ICON_PATH,
     onLeftClick: toggleMainWindow,
@@ -177,6 +180,11 @@ app.whenReady().then(() => {
       app.isQuitting = true;
       app.quit();
     },
+    onCopyLastLink: () => {
+      if (lastReceivedLink) clipboard.writeText(lastReceivedLink);
+    },
+    onOpenLinksFolder: () => shell.openPath(LINKS_DIR),
+    onOpenPhotosFolder: () => shell.openPath(PHOTOS_DIR),
   });
   tray = trayHandle.tray;
 
@@ -209,10 +217,18 @@ app.whenReady().then(() => {
         // did before the ephemeral-pairing rewrite dropped it. The whole
         // point of beaming a link over is to use it right away.
         clipboard.writeText(item.content);
+        lastReceivedLink = item.content;
+        trayHandle.setLastLinkAvailable(true);
         notify('Link received — copied to clipboard', item.content);
       } else if (item.type === 'photo') {
         const savedPath = await savePhoto(item, relayUrl, token);
         notify('Photo received', savedPath);
+      } else if (item.type === 'file') {
+        const savedPath = await saveFile(item, relayUrl, token);
+        notify('File received', savedPath);
+      } else if (item.type === 'voice') {
+        const savedPath = await saveVoiceMemo(item, relayUrl, token);
+        notify('Voice memo received', savedPath);
       }
     } catch (err) {
       console.error('failed to save received item', err);
@@ -222,6 +238,11 @@ app.whenReady().then(() => {
   ipcMain.on('resize-window', (event, state) => {
     const size = STATE_SIZES[state] || STATE_SIZES.start;
     animateResize(mainWindow, size.width, size.height);
+    // Reuses this exact same signal (web-client's showOnly() already sends
+    // it on every state transition) as the tray's live pairing-status
+    // indicator, rather than adding a second IPC channel for what's really
+    // the same event.
+    trayHandle.setStatus(state);
   });
 
   ipcMain.on('quit', () => {

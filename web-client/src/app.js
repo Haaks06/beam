@@ -426,7 +426,22 @@ function enterActiveState() {
     isOfferer: lastIntent === 'receive',
     myRemoteAddr,
     onModeChange: setP2pIndicator,
-    onItem: (item) => renderItem(item, { prepend: true }),
+    // Regression fix: the desktop app's native save-to-folder/clipboard/
+    // notify pipeline (main.js's `item-received` IPC handler) previously
+    // only ever fired from the SSE (relay-delivered) path below -- a
+    // P2P-direct arrival never touched it at all, silently breaking that
+    // whole feature for anyone on the same network as their paired phone
+    // (the P2P fast path's exact common case). Found by actually testing
+    // the desktop app end-to-end rather than assuming Phase 2a's P2P work
+    // couldn't have affected it. isControlMessage guards out Phase 2c's
+    // trust-handshake messages, which arrive here undisguised (unlike the
+    // relay-fallback path, which disguises them as an encrypted 'link' —
+    // see handleTrustHandshake) and would otherwise get "saved" as a fake
+    // link.
+    onItem: (item) => {
+      renderItem(item, { prepend: true });
+      if (!isControlMessage(item)) window.beamNative?.itemReceived(item, p2pRelayUrl, p2pToken);
+    },
   });
 
   clearInterval(countdownTimer);
@@ -1215,7 +1230,13 @@ function connectReceivedFeed() {
     renderItem(item, { prepend: true });
     localStorage.setItem('lastSeenId', String(item.id));
     const { relayUrl, token } = loadConfig();
-    window.beamNative?.itemReceived(item, relayUrl, token);
+    // Note: a relay-delivered trust-handshake control message is disguised
+    // as an ordinary encrypted 'link' (see handleTrustHandshake) and only
+    // reveals itself as such after renderItem() decrypts it above, so this
+    // guard catches the undisguised case only -- a narrower fix than the
+    // P2P-direct path's equivalent check above, which sees it before any
+    // disguise is possible. Known minor gap, not attempted here.
+    if (!isControlMessage(item)) window.beamNative?.itemReceived(item, relayUrl, token);
     // Only a genuinely live arrival copies to clipboard — same reasoning as
     // land-in's animation only firing for live items, not backlog: copying
     // every item in a reconnect catch-up batch would silently clobber
