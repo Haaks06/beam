@@ -54,6 +54,19 @@ const countDevices = db.prepare('SELECT COUNT(*) AS count FROM devices WHERE inb
 const markPaired = db.prepare('UPDATE inboxes SET paired_at = ?, expires_at = ? WHERE id = ?');
 const getInbox = db.prepare('SELECT * FROM inboxes WHERE id = ?');
 
+// Matches CODE_ALPHABET at CODE_LENGTH exactly -- the same shape a
+// server-generated code always has, just letting the caller suggest the
+// specific value instead of always randomizing it (see Phase 2c's
+// trusted-device auto-reconnect: both devices independently derive the
+// same code from a locally-shared secret + a time window, so whichever
+// calls /pair/init first can request that exact value, and the other
+// device's /pair/claim then finds it already there without ever seeing a
+// QR or typing anything). This is NOT a new server-side identity or
+// account concept -- the server still only ever sees a short-lived,
+// single-use, rate-limited ephemeral code exactly like any other; it just
+// isn't always the one that generateCode() would have picked.
+const PREFERRED_CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
+
 // POST /pair/init — generates a code that adds the SECOND (and only the
 // second) device to the caller's inbox. A pairing is exactly two devices,
 // so this refuses to mint a code once that slot is already filled.
@@ -64,10 +77,20 @@ router.post('/init', mutationLimiter, requireToken, async (req, res) => {
 
   const now = Date.now();
   let code;
-  // Extremely unlikely to collide, but guard anyway.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    code = generateCode();
-    if (!getPairing.get(code)) break;
+  const preferred = (req.body && req.body.preferredCode || '').toUpperCase();
+  // Same availability check a random collision retry would need -- a
+  // preferred code that's already taken (extremely unlikely in practice,
+  // since it's derived from a secret+time-window only the other trusted
+  // device knows) just falls back to a normal random one below, exactly
+  // as if none was requested at all.
+  if (PREFERRED_CODE_RE.test(preferred) && !getPairing.get(preferred)) {
+    code = preferred;
+  } else {
+    // Extremely unlikely to collide, but guard anyway.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      code = generateCode();
+      if (!getPairing.get(code)) break;
+    }
   }
   insertPairing.run(req.device.inbox_id, code, now, now + CODE_TTL_MS);
 

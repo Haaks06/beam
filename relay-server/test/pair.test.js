@@ -181,3 +181,61 @@ test('GET /pair/status/:code includes the polling device\'s remoteAddr', async (
   const statusRes = await request(app).get(`/pair/status/${initRes.body.pairingCode}`).expect(200);
   assert.ok(typeof statusRes.body.remoteAddr === 'string' && statusRes.body.remoteAddr.length > 0);
 });
+
+// Phase 2c: trusted-device auto-reconnect derives a code from a locally-
+// shared secret + time window on both devices independently, then asks
+// /pair/init to mint that exact value instead of a random one, so the
+// other device's /pair/claim can find it without ever seeing a QR.
+test('POST /pair/init mints the exact preferredCode when it is valid and available', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({ preferredCode: 'ABCDEF' })
+    .expect(200);
+  assert.equal(initRes.body.pairingCode, 'ABCDEF');
+
+  // And it's a completely normal, fully-functional code from here on --
+  // no different code path for claiming, expiry, or the second-device cap.
+  await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: 'ABCDEF', label: 'trusted device' })
+    .expect(200);
+});
+
+test('POST /pair/init falls back to a random code when preferredCode is already taken', async () => {
+  const ownerA = await createInboxToken('owner A');
+  await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerA}`)
+    .send({ preferredCode: 'TAKEN1' })
+    .expect(200);
+
+  const ownerB = await createInboxToken('owner B');
+  const secondRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerB}`)
+    .send({ preferredCode: 'TAKEN1' })
+    .expect(200);
+  assert.notEqual(secondRes.body.pairingCode, 'TAKEN1');
+});
+
+test('POST /pair/init falls back to a random code when preferredCode is malformed', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({ preferredCode: 'not-valid!!' })
+    .expect(200);
+  assert.notEqual(initRes.body.pairingCode, 'not-valid!!');
+  assert.equal(initRes.body.pairingCode.length, 6);
+});
+
+test('POST /pair/init works exactly as before when no preferredCode is sent at all', async () => {
+  const ownerToken = await createInboxToken();
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+  assert.equal(initRes.body.pairingCode.length, 6);
+});
