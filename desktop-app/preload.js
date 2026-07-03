@@ -15,4 +15,10 @@ contextBridge.exposeInMainWorld('beamNative', {
   // showOnly() in app.js, the single place every state transition passes
   // through.
   resizeWindow: (state) => ipcRenderer.send('resize-window', state),
+  // main.js fires this when the window is shown from the tray or the
+  // system wakes from sleep — either can leave a long-idle SSE connection
+  // silently dead (see the watchdog in src/app.js), and this is what makes
+  // that recheck happen the instant the window is actually looked at again
+  // instead of waiting for the next periodic watchdog tick.
+  onResumeCheck: (callback) => ipcRenderer.on('resume-check', () => callback()),
 });

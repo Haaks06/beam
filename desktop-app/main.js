@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
@@ -97,8 +97,10 @@ function createMainWindow() {
   mainWindow.setMenuBarVisibility(false);
   // This is the literal same page a phone gets when it visits the relay —
   // same origin as the API, same HTML/JS, no separate Electron-only UI to
-  // keep in sync with it.
-  mainWindow.loadURL(RELAY_URL);
+  // keep in sync with it. /app specifically (not the bare root) — root now
+  // serves beamlot.com's marketing landing page; the actual pairing app
+  // lives at /app (see relay-server/index.js's routing).
+  mainWindow.loadURL(`${RELAY_URL}/app`);
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
@@ -109,6 +111,14 @@ function createMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+  // A window left hidden in the tray for a long time can end up with a
+  // silently-dead SSE connection (see the watchdog in web-client/src/
+  // app.js) — the renderer isn't destroyed while hidden, so its JS keeps
+  // running, but the underlying connection can still go stale without the
+  // page ever finding out promptly. Telling it to recheck the instant the
+  // window is actually shown again means that's already fixed by the time
+  // anyone's looking, rather than needing a full quit-and-relaunch.
+  mainWindow.on('show', () => mainWindow.webContents.send('resume-check'));
 }
 
 function toggleMainWindow() {
@@ -147,6 +157,14 @@ app.whenReady().then(() => {
   tray = trayHandle.tray;
 
   createMainWindow();
+
+  // The other half of the "stale after being idle" fix, for the case the
+  // window was actually still visible when the machine slept — 'show'
+  // above only fires on a visibility transition, which a already-visible
+  // window waking up alongside the OS doesn't trigger.
+  powerMonitor.on('resume', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resume-check');
+  });
 
   // A live SSE arrival in the shared web-client page (web-client/src/app.js)
   // calls window.beamNative.itemReceived(...) via preload.js — this is what
