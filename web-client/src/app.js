@@ -82,20 +82,16 @@ async function parseErrorMessage(res, fallback) {
 
 const statusEl = document.getElementById('status');
 const startSection = document.getElementById('start-section');
+const connectBtn = document.getElementById('connect-btn');
 const relayUrlInput = document.getElementById('relay-url');
 const pairingCodeInput = document.getElementById('pairing-code');
-const receiveSection = document.getElementById('receive-section');
-const intentGrid = document.getElementById('intent-grid');
-const intentSendBtn = document.getElementById('intent-send-btn');
-const intentReceiveBtn = document.getElementById('intent-receive-btn');
-const receiveBackBtn = document.getElementById('receive-back-btn');
 const showAdvancedBtn = document.getElementById('show-advanced-btn');
 const advancedSection = document.getElementById('advanced-section');
 const inviteSection = document.getElementById('invite-section');
-const inviteTitleEl = document.getElementById('invite-title');
 const inviteCodeEl = document.getElementById('invite-code');
 const inviteQrEl = document.getElementById('invite-qr');
 const inviteFrame = document.getElementById('invite-frame');
+const pairSuccessOverlay = document.getElementById('pair-success-overlay');
 const appShell = document.getElementById('app-shell');
 const endedSection = document.getElementById('ended-section');
 const sessionTimerEl = document.getElementById('session-timer');
@@ -108,9 +104,12 @@ const connPillText = document.getElementById('conn-pill-text');
 let eventSource = null;
 let invitePollTimer = null;
 let countdownTimer = null;
-// Which intent card was tapped (or which side of the receive/scan flow this
-// device took) — used only to pick a sensible default tab once paired, so
-// "I wanted to send" doesn't land on an empty Receive tab first.
+// There's no upfront "I want to send" / "I want to receive" choice anymore
+// — connecting always shows your own QR AND a code-entry field at once,
+// whichever side of the pairing actually completes it first. This only
+// picks a sensible default tab once paired: generating your own code
+// defaults to Send, claiming someone else's (typed, scanned, or via a
+// scanned link) defaults to Receive.
 let lastIntent = 'send';
 
 function setStatus(message, variant) {
@@ -157,10 +156,22 @@ function enterStartState() {
   clearInterval(countdownTimer);
   stopQrScan();
   if (connPill) connPill.style.display = 'none';
-  intentGrid.style.display = 'flex';
-  receiveSection.style.display = 'none';
   advancedSection.style.display = 'none';
   showOnly('start');
+}
+
+// A brief, unmissable confirmation the instant a pairing completes — shown
+// for every path (someone scanned your QR, you typed their code, or you
+// scanned theirs with the camera), not just the QR-generation side, since
+// all three used to only get a small status line easy to miss.
+function showPairedAnimation() {
+  return new Promise((resolve) => {
+    pairSuccessOverlay.classList.add('visible');
+    setTimeout(() => {
+      pairSuccessOverlay.classList.remove('visible');
+      resolve();
+    }, 900);
+  });
 }
 
 function enterEndedState() {
@@ -232,8 +243,9 @@ function pollInvite(relayUrl, code) {
         inviteFrame?.classList.add('locked');
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
-        setStatus('Paired!', 'success');
-        setTimeout(() => enterActiveState(), 500);
+        lastIntent = 'send';
+        await showPairedAnimation();
+        enterActiveState();
       }
     } catch {
       // Transient network hiccup — keep polling silently.
@@ -258,13 +270,16 @@ function refreshState() {
   return enterInviteState();
 }
 
-intentSendBtn.addEventListener('click', async () => {
-  lastIntent = 'send';
+// One button: generates this device's own inbox + pairing code immediately,
+// which enterInviteState() shows as a QR alongside a code-entry field and
+// the camera scanner — so it never matters which device actually "started"
+// it, whichever side completes the pairing first wins.
+connectBtn.addEventListener('click', async () => {
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
-  intentSendBtn.classList.add('sending');
-  intentSendBtn.disabled = true;
+  connectBtn.classList.add('sending');
+  connectBtn.disabled = true;
   try {
-    setStatus('Starting...');
+    setStatus('Connecting...');
     const res = await fetch(`${relayUrl}/inbox`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -276,27 +291,13 @@ intentSendBtn.addEventListener('click', async () => {
     setStatus('', null);
     await enterInviteState();
   } catch (err) {
-    setStatus(`Couldn't start: ${err.message}`, 'error');
+    setStatus(`Couldn't connect: ${err.message}`, 'error');
   } finally {
-    intentSendBtn.classList.remove('sending');
-    intentSendBtn.disabled = false;
+    connectBtn.classList.remove('sending');
+    connectBtn.disabled = false;
   }
 });
 
-// "Receive" doesn't need its own device-creation call — claiming a code
-// (below) mints this device's token in the same request as joining, so
-// tapping this just reveals the connect form instead of starting anything.
-intentReceiveBtn.addEventListener('click', () => {
-  lastIntent = 'receive';
-  intentGrid.style.display = 'none';
-  receiveSection.style.display = 'block';
-  pairingCodeInput?.focus();
-});
-receiveBackBtn.addEventListener('click', () => {
-  intentGrid.style.display = 'flex';
-  receiveSection.style.display = 'none';
-  advancedSection.style.display = 'none';
-});
 if (showAdvancedBtn && advancedSection) {
   showAdvancedBtn.addEventListener('click', () => {
     const willShow = advancedSection.style.display === 'none';
@@ -314,6 +315,8 @@ async function claimPairingCode(relayUrl, pairingCode) {
   if (!res.ok) throw new Error(await parseErrorMessage(res, 'pairing failed'));
   const { token, expiresAt } = await res.json();
   await saveConfig({ relayUrl, token, expiresAt });
+  clearInterval(invitePollTimer);
+  await showPairedAnimation();
   enterActiveState();
 }
 
@@ -369,7 +372,7 @@ function scanVideoFrame() {
 
 function handleScannedQr(text) {
   stopQrScan();
-  receiveSection.style.display = 'block';
+  inviteSection.style.display = 'block';
 
   let parsed;
   try {
@@ -386,14 +389,14 @@ function handleScannedQr(text) {
   relayUrlInput.value = relay;
   pairingCodeInput.value = code.toUpperCase();
   setStatus('Pairing...');
-  claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase())
-    .then(() => setStatus('Paired! You can now send and receive.', 'success'))
-    .catch((err) => setStatus(`Pairing failed: ${err.message}`, 'error'));
+  claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase()).catch((err) =>
+    setStatus(`Pairing failed: ${err.message}`, 'error')
+  );
 }
 
 if (scanQrBtn) {
   scanQrBtn.addEventListener('click', async () => {
-    receiveSection.style.display = 'none';
+    inviteSection.style.display = 'none';
     scanSection.style.display = 'block';
     scanStatus.textContent = 'Requesting camera access…';
     try {
@@ -412,7 +415,7 @@ if (scanQrBtn) {
 if (scanCancelBtn) {
   scanCancelBtn.addEventListener('click', () => {
     stopQrScan();
-    receiveSection.style.display = 'block';
+    inviteSection.style.display = 'block';
   });
 }
 
@@ -425,7 +428,6 @@ document.getElementById('pair-btn').addEventListener('click', async () => {
   try {
     setStatus('Pairing...');
     await claimPairingCode(relayUrl, pairingCode);
-    setStatus('Paired! You can now send and receive.', 'success');
   } catch (err) {
     setStatus(`Pairing failed: ${err.message}`, 'error');
   }
@@ -467,12 +469,11 @@ async function claimFromQrScan() {
 
   relayUrlInput.value = relay;
   pairingCodeInput.value = code.toUpperCase();
-  intentGrid.style.display = 'none';
-  receiveSection.style.display = 'block';
+  startSection.style.display = 'none';
+  inviteSection.style.display = 'block';
   try {
     setStatus('Pairing...');
     await claimPairingCode(relay.replace(/\/+$/, ''), code.toUpperCase());
-    setStatus('Paired! You can now send and receive.', 'success');
   } catch (err) {
     // Fall back to the manual form, prefilled, so the user can retry by hand.
     enterStartState();
@@ -603,6 +604,22 @@ function connectReceivedFeed() {
     localStorage.setItem('lastSeenId', String(item.id));
     const { relayUrl, token } = loadConfig();
     window.beamNative?.itemReceived(item, relayUrl, token);
+    // Only a genuinely live arrival copies to clipboard — same reasoning as
+    // land-in's animation only firing for live items, not backlog: copying
+    // every item in a reconnect catch-up batch would silently clobber
+    // whatever the user had just copied themselves. Restores what earlier
+    // versions of the desktop app used to do (see saveHandlers.js's git
+    // history) — beaming a link over is meant to be used right away.
+    if (item.type === 'link' && isHttpUrl(item.content)) {
+      navigator.clipboard?.writeText(item.content).then(
+        () => setStatus(`Copied to clipboard: "${truncate(item.content, 60)}"`, 'success'),
+        () => {
+          // Some browsers refuse a clipboard write outside a direct user
+          // gesture (notably Safari) — not fatal, the item is still right
+          // there in the Received list to copy by hand.
+        }
+      );
+    }
   };
   // Pushed by the relay the instant it deletes an expired session (see
   // relay-server/lib/sessionCleanup.js) — reacting to this beats waiting for

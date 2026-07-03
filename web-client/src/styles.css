@@ -484,30 +484,89 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .toggle-link:hover { background: none; color: var(--fg); }
 
-/* -- intent cards: "Send" / "Receive" is the very first decision, matching
-   how AirDrop/Nearby Share/Snapdrop frame the same choice, instead of one
-   generic "Start" button that hides what's about to happen ------------- */
-.intent-grid { display: flex; gap: 12px; margin: 6px 0 4px; }
-.intent-card {
-  flex: 1;
+/* -- the one landing action: no more Send/Receive choice upfront, since
+   connecting always shows your own QR *and* a code-entry field at once --- */
+.connect-btn {
+  width: 100%;
+  padding: 18px 0;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+/* -- "or send a link/text instead": was a barely-visible underlined text
+   link sitting below a much bigger photo drop zone — easy to miss entirely.
+   A bordered box reads as a real second option, not a footnote. -------- */
+.text-toggle-box {
+  display: block;
+  width: 100%;
+  margin: 4px 0 10px;
+  padding: 12px 10px;
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.text-toggle-box:hover { border-color: var(--violet-500); color: var(--fg); background: var(--surface-hover); }
+
+/* -- pairing success: a full-page beat of confirmation the instant a
+   connection completes, for every path (scanned, typed, or scanned-with-
+   camera) — not just a status line easy to miss. --------------------- */
+.pair-success-overlay {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 26px 10px 20px;
-  margin: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--fg);
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s var(--ease-out-expo);
+  justify-content: center;
+  gap: 14px;
+  background: rgba(5, 3, 8, 0.88);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 50;
+  transition: opacity 0.25s ease;
 }
-.intent-card:hover { border-color: var(--violet-500); background: var(--surface-hover); transform: translateY(-2px); }
-.intent-card:active { transform: scale(0.98); }
-.intent-card svg { width: 28px; height: 28px; color: var(--violet-400); flex-shrink: 0; }
-.intent-card .intent-label { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
-.intent-card .intent-sub { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.4; }
+.pair-success-overlay.visible { opacity: 1; }
+.pair-success-overlay p {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 0;
+}
+.pair-success-badge {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--beam-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 0 0 0 rgba(114, 56, 245, 0.55);
+  transform: scale(0.4);
+  opacity: 0;
+}
+.pair-success-overlay.visible .pair-success-badge {
+  animation: pair-badge-pop 0.5s var(--ease-spring) forwards, pair-badge-ring 1s ease-out 0.1s;
+}
+.pair-success-badge svg { width: 34px; height: 34px; }
+@keyframes pair-badge-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes pair-badge-ring {
+  0% { box-shadow: 0 0 0 0 rgba(114, 56, 245, 0.55); }
+  100% { box-shadow: 0 0 0 22px rgba(114, 56, 245, 0); }
+}
 .hint-text { font-size: 12px; color: var(--muted); text-align: center; margin: 0 0 14px; line-height: 1.5; }
 
 /* -- photo drop zone: click, drag-and-drop, or paste ------------------- */

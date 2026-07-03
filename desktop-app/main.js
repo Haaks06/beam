@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, Notification, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
@@ -119,7 +119,13 @@ app.whenReady().then(() => {
     try {
       if (item.type === 'link') {
         saveLink(item);
-        notify('Link received', item.content);
+        // Electron's native clipboard module, not the web Clipboard API —
+        // more reliable than navigator.clipboard from a background renderer
+        // context, and this is exactly what earlier versions of this app
+        // did before the ephemeral-pairing rewrite dropped it. The whole
+        // point of beaming a link over is to use it right away.
+        clipboard.writeText(item.content);
+        notify('Link received — copied to clipboard', item.content);
       } else if (item.type === 'photo') {
         const savedPath = await savePhoto(item, relayUrl, token);
         notify('Photo received', savedPath);

@@ -23,55 +23,51 @@
   <p class="tagline">Connect two devices for 2 minutes, share a photo or link, done — nothing is saved.</p>
 
   <section id="start-section">
-    <div class="intent-grid" id="intent-grid">
-      <button id="intent-send-btn" class="intent-card">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4 20-7Z"></path></svg>
-        <span class="intent-label">Send</span>
-        <span class="intent-sub">Share a photo or link from this device</span>
-      </button>
-      <button id="intent-receive-btn" class="intent-card">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M4 19h16"></path></svg>
-        <span class="intent-label">Receive</span>
-        <span class="intent-sub">Get something from another device</span>
-      </button>
-    </div>
-
-    <div id="receive-section" style="display:none">
-      <div class="divider">Connect to the sending device</div>
-      <p class="hint-text">Scan the QR code shown there, or type its code below.</p>
-      <button type="button" id="scan-qr-btn" class="primary">📷 Scan QR with camera</button>
-      <label>Pairing code<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
-      <button id="pair-btn" class="primary">Connect</button>
-      <button type="button" id="receive-back-btn" class="link">← Back</button>
-      <button type="button" id="show-advanced-btn" class="toggle-link">Using a different relay?</button>
-      <div id="advanced-section" style="display:none">
-        <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
-      </div>
-    </div>
-
-    <div id="scan-section" style="display:none">
-      <p class="section-title">Point your camera at the QR code</p>
-      <div class="scan-frame" id="scan-frame">
-        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
-        <span class="scanline"></span>
-        <video id="scan-video" autoplay playsinline muted></video>
-      </div>
-      <p class="waiting-text" id="scan-status">Requesting camera access…</p>
-      <button type="button" id="scan-cancel-btn" class="link">Cancel</button>
-    </div>
+    <button id="connect-btn" class="primary connect-btn">⚡ Connect to Beam</button>
+    <p class="hint-text">Pairs with one other device for 2 minutes — nothing is saved after.</p>
   </section>
 
   <section id="invite-section" style="display:none">
-    <p class="section-title" id="invite-title">Show this to the other device</p>
+    <p class="section-title">Show this to the other device…</p>
     <div class="scan-frame" id="invite-frame">
       <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
       <span class="scanline"></span>
       <img class="qr" id="invite-qr" alt="Pairing QR code" />
     </div>
     <div id="invite-code"></div>
-    <p class="waiting-text">Waiting for it to scan or enter this code…</p>
+    <p class="waiting-text">…or use theirs below, whichever happens first.</p>
+
+    <div class="divider">or enter their code</div>
+    <label>Pairing code<input id="pairing-code" placeholder="ABC123" maxlength="6" /></label>
+    <button id="pair-btn" class="primary">Connect</button>
+
+    <button type="button" id="scan-qr-btn" class="primary">📷 Scan QR with camera</button>
+
+    <button type="button" id="show-advanced-btn" class="toggle-link">Using a different relay?</button>
+    <div id="advanced-section" style="display:none">
+      <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
+    </div>
+
     <button id="invite-cancel-btn" class="link">Cancel</button>
   </section>
+
+  <section id="scan-section" style="display:none">
+    <p class="section-title">Point your camera at the QR code</p>
+    <div class="scan-frame" id="scan-frame">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <span class="scanline"></span>
+      <video id="scan-video" autoplay playsinline muted></video>
+    </div>
+    <p class="waiting-text" id="scan-status">Requesting camera access…</p>
+    <button type="button" id="scan-cancel-btn" class="link">Cancel</button>
+  </section>
+
+  <div class="pair-success-overlay" id="pair-success-overlay">
+    <div class="pair-success-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"></path></svg>
+    </div>
+    <p>Paired!</p>
+  </div>
 
   <div id="app-shell" style="display:none">
     <div id="session-banner">
@@ -100,7 +96,7 @@
         </div>
         <button id="send-photo-btn" class="primary" disabled>Send photo</button>
 
-        <button type="button" id="show-text-btn" class="toggle-link">Or send a link/text instead</button>
+        <button type="button" id="show-text-btn" class="text-toggle-box">✏️ Or send a link/text instead</button>
         <div id="text-section" style="display:none">
           <label>Link or text<input id="link-url" placeholder="https://example.com or just type anything" /></label>
           <button id="send-link-btn" class="primary">Send</button>
