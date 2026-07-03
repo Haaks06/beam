@@ -1,24 +1,22 @@
 import './styles.css';
 import jsQR from 'jsqr';
 import { initP2P, bufToBase64, base64ToBuf } from './p2p.js';
-
-const DB_NAME = 'beam';
-const STORE_NAME = 'config';
-
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+import { openDb, CONFIG_STORE } from './idb.js';
+import {
+  isControlMessage,
+  generateHandshake,
+  handleIncomingHandshake,
+  listTrustedDevices,
+  saveTrustedDevice,
+  removeTrustedDevice,
+  attemptAutoReconnect,
+} from './trust.js';
 
 async function setConfigValue(key, value) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put(value, key);
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    tx.objectStore(CONFIG_STORE).put(value, key);
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
@@ -142,6 +140,42 @@ function setP2pIndicator(mode) {
   p2pIndicatorEl.classList.remove('direct', 'relayed');
   if (mode === 'direct' || mode === 'relayed') p2pIndicatorEl.classList.add(mode);
 }
+
+// Phase 2c: sends a trust-handshake control message over whichever
+// channel is currently active -- the exact same P2P-direct-else-
+// encrypted-relay path real items use (see the send-link-btn handler
+// below), reused rather than duplicated. The relay-fallback case has no
+// item type of its own to use (POST /items/link always stores type
+// 'link' server-side no matter what), so it travels disguised as an
+// ordinary encrypted link -- see renderItem()'s reveal-after-decrypt
+// check for the receiving half of that.
+async function sendControlMessage(message) {
+  if (!p2pController) return;
+  await p2pController.waitUntilReady();
+  if (p2pController.trySendDirect(message)) return;
+  const { relayUrl, token } = loadConfig();
+  const encryptedBuf = await p2pController.encryptForRelay(new TextEncoder().encode(JSON.stringify(message)));
+  await fetch(`${relayUrl}/items/link`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: bufToBase64(encryptedBuf), encrypted: true }),
+  }).catch(() => {
+    // Best-effort -- if this doesn't land, the "Remember this pairing"
+    // toggle simply doesn't take effect this session; nothing else
+    // depends on it succeeding.
+  });
+}
+
+async function handleTrustHandshake(message) {
+  const { shouldReply } = await handleIncomingHandshake(message);
+  if (shouldReply) {
+    // First time seeing this id -- reply with the same id+secret but our
+    // own label, so the original sender ends up with the correct label
+    // too, from the one action the user actually took (enabling the
+    // toggle on just one side).
+    await sendControlMessage({ type: message.type, id: message.id, secret: message.secret, label: deviceLabel() });
+  }
+}
 // Bumped every time we (re-)enter the invite flow or leave it (Cancel,
 // pairing completing, page reload's own refreshState() call, etc). A
 // /pair/init response's continuation only applies its result if this still
@@ -211,7 +245,85 @@ function enterStartState() {
   p2pController = null;
   if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
   advancedSection.style.display = 'none';
+  renderTrustedDevicesList();
   showOnly('start');
+}
+
+// Phase 2c: the "Reconnect with [label]" list on the start screen. Hidden
+// entirely (see index.html) unless at least one device has been
+// remembered -- a first-time visitor's experience is completely
+// unchanged.
+const trustedDevicesListEl = document.getElementById('trusted-devices-list');
+async function renderTrustedDevicesList() {
+  if (!trustedDevicesListEl) return;
+  const devices = await listTrustedDevices();
+  trustedDevicesListEl.innerHTML = '';
+  if (devices.length === 0) {
+    trustedDevicesListEl.style.display = 'none';
+    return;
+  }
+  trustedDevicesListEl.style.display = 'block';
+  for (const device of devices) {
+    const card = document.createElement('div');
+    card.className = 'trusted-device-card';
+
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = device.label;
+    card.appendChild(label);
+
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '8px';
+    actions.style.alignItems = 'center';
+
+    const reconnectBtn = document.createElement('button');
+    reconnectBtn.type = 'button';
+    reconnectBtn.className = 'reconnect-btn';
+    reconnectBtn.textContent = 'Reconnect';
+    reconnectBtn.addEventListener('click', () => tryAutoReconnect(device, reconnectBtn));
+    actions.appendChild(reconnectBtn);
+
+    const forgetBtn = document.createElement('button');
+    forgetBtn.type = 'button';
+    forgetBtn.className = 'forget-btn';
+    forgetBtn.textContent = 'Forget';
+    forgetBtn.addEventListener('click', async () => {
+      await removeTrustedDevice(device.id);
+      renderTrustedDevicesList();
+    });
+    actions.appendChild(forgetBtn);
+
+    card.appendChild(actions);
+    trustedDevicesListEl.appendChild(card);
+  }
+}
+
+// Attempts the actual code-free reconnect (see trust.js's
+// attemptAutoReconnect) -- falls back to leaving the user on the normal
+// manual pairing screen if it doesn't succeed within its own timeout.
+async function tryAutoReconnect(device, triggerBtn) {
+  triggerBtn.disabled = true;
+  triggerBtn.textContent = 'Connecting…';
+  try {
+    const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
+    setStatus(`Reconnecting with ${device.label}…`);
+    const result = await attemptAutoReconnect(device, relayUrl, { deviceLabel });
+    if (!result) {
+      setStatus(`Couldn't auto-reconnect with ${device.label} — pair manually below.`, 'error');
+      connectBtn.click();
+      return;
+    }
+    await saveConfig({ relayUrl: result.relayUrl, token: result.token, expiresAt: result.expiresAt });
+    lastIntent = 'send';
+    await showPairedAnimation();
+    enterActiveState();
+  } catch (err) {
+    setStatus(`Couldn't auto-reconnect: ${err.message}`, 'error');
+  } finally {
+    triggerBtn.disabled = false;
+    triggerBtn.textContent = 'Reconnect';
+  }
 }
 
 // A brief, unmissable confirmation the instant a pairing completes — shown
@@ -578,6 +690,36 @@ document.getElementById('invite-cancel-btn').addEventListener('click', () => {
 repairLink.addEventListener('click', () => enterStartState());
 document.getElementById('restart-btn').addEventListener('click', () => enterStartState());
 
+// Phase 2c: the one user action that kicks off the whole trusted-device
+// handshake -- the other device doesn't need to do anything itself, it
+// auto-replies on receipt (see handleTrustHandshake above). Unchecking
+// doesn't retract anything already sent; it just stops this device from
+// having offered a fresh one this session (there's no "forget" story for
+// a specific in-flight toggle, only for an already-saved device -- see
+// the start-screen list's forget button below).
+const rememberPairingToggle = document.getElementById('remember-pairing-toggle');
+if (rememberPairingToggle) {
+  rememberPairingToggle.addEventListener('change', async () => {
+    if (!rememberPairingToggle.checked) return;
+    rememberPairingToggle.disabled = true;
+    try {
+      const { id, secretB64, message } = generateHandshake(deviceLabel());
+      await sendControlMessage(message);
+      // Optimistic placeholder label -- overwritten with the other
+      // device's real label once its auto-reply arrives (see
+      // handleTrustHandshake's shouldReply guard, which is false for this
+      // exact id from here on, so the reply updates rather than re-sends).
+      await saveTrustedDevice({ id, label: 'trusted device', secret: secretB64 });
+      setStatus('Remembered — you can reconnect without a code next time.', 'success');
+    } catch (err) {
+      setStatus(`Couldn't remember this pairing: ${err.message}`, 'error');
+      rememberPairingToggle.checked = false;
+    } finally {
+      rememberPairingToggle.disabled = false;
+    }
+  });
+}
+
 // Opening another device's pairing link (path-based /ABC123, or the older
 // ?relay=&code=) pairs immediately rather than just prefilling the form, so
 // opening/scanning it is the whole interaction on the joining device.
@@ -677,7 +819,21 @@ function makeCopyButton(text) {
 // before it can be shown — a P2P-received item (see p2p.js's onItem
 // callback) is never encrypted at the app level (WebRTC's own mandatory
 // DTLS already covers that path) and resolves through this immediately.
+//
+// Also where Phase 2c's trust-handshake control messages get intercepted
+// before they'd ever show up as a visible received item: a P2P-direct one
+// arrives with type === TRUST_CONTROL_TYPE directly; a relay-delivered one
+// is disguised as an encrypted 'link' (the relay's own POST /items/link
+// always stores type 'link' regardless of what the client actually means
+// by the content — there's no other item-shaped channel to use without a
+// new relay endpoint, which would defeat "purely client-side"), so it only
+// reveals itself as a control message after decryption.
 async function renderItem(item, { prepend } = { prepend: true }) {
+  if (isControlMessage(item)) {
+    await handleTrustHandshake(item);
+    return;
+  }
+
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
   const row = document.createElement('div');
@@ -700,6 +856,21 @@ async function renderItem(item, { prepend } = { prepend: true }) {
       // couldn't be read rather than silently rendering ciphertext as if
       // it were the real content.
       displayContent = '[Encrypted — could not decrypt]';
+    }
+  }
+
+  if (item.type === 'link') {
+    // A relay-delivered control message looks exactly like a normal
+    // encrypted link until decrypted -- this is that reveal.
+    let parsed;
+    try {
+      parsed = JSON.parse(displayContent);
+    } catch {
+      // Not JSON -- a completely ordinary link/text item, fall through.
+    }
+    if (isControlMessage(parsed)) {
+      await handleTrustHandshake(parsed);
+      return;
     }
   }
 
