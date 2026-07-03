@@ -12,17 +12,5 @@
   "devDependencies": {
     "electron": "32.3.3",
     "electron-builder": "^25.0.0"
-  },
-  "build": {
-    "appId": "com.beam.desktop",
-    "productName": "Beam",
-    "npmRebuild": false,
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico",
-      "signtoolOptions": {
-        "publisherName": "Beam"
-      }
-    }
   }
 }
