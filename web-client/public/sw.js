@@ -6,10 +6,11 @@ const DB_NAME = 'beam';
 const STORE_NAME = 'config';
 // Kept in sync with src/idb.js's DB_VERSION -- opening the same IndexedDB
 // database at a lower version than it's already been upgraded to (by
-// src/app.js, which added a second object store in version 2 for Phase
-// 2c's trusted-device list) throws. This file doesn't need that store
-// itself, so its own upgrade logic only ever touches CONFIG_STORE.
-const DB_VERSION = 2;
+// src/app.js, which added object stores in version 2 for Phase 2c's
+// trusted-device list and version 3 for Phase 2's local received-items
+// cache) throws. This file doesn't need either store itself, so its own
+// upgrade logic only ever touches CONFIG_STORE.
+const DB_VERSION = 3;
 
 function openDb() {
   return new Promise((resolve, reject) => {

@@ -1,7 +1,7 @@
 import './styles.css';
 import jsQR from 'jsqr';
 import { initP2P, bufToBase64, base64ToBuf } from './p2p.js';
-import { openDb, CONFIG_STORE } from './idb.js';
+import { openDb, CONFIG_STORE, saveReceivedItem, listReceivedItems, clearReceivedItems } from './idb.js';
 import {
   isControlMessage,
   generateHandshake,
@@ -39,6 +39,8 @@ function clearConfig() {
   localStorage.removeItem('token');
   localStorage.removeItem('expiresAt');
   localStorage.removeItem('lastSeenId');
+  localStorage.removeItem('lastIntent');
+  localStorage.removeItem('myRemoteAddr');
 }
 
 function loadConfig() {
@@ -117,7 +119,15 @@ let p2pController = null;
 // fast-path already falls out of standard ICE candidate prioritization,
 // which prefers lower-latency host candidates over STUN-reflexive ones on
 // its own.
-let myRemoteAddr = null;
+// Persisted alongside lastIntent for the same reason: a page reload mid-
+// session shouldn't lose this purely-cosmetic "(same network)" label any
+// more than it should lose the offerer/answerer role.
+let myRemoteAddr = localStorage.getItem('myRemoteAddr') || null;
+function setMyRemoteAddr(addr) {
+  myRemoteAddr = addr;
+  if (addr) localStorage.setItem('myRemoteAddr', addr);
+  else localStorage.removeItem('myRemoteAddr');
+}
 
 function setP2pIndicator(mode) {
   if (!p2pIndicatorEl) return;
@@ -188,7 +198,20 @@ let inviteGeneration = 0;
 // picks a sensible default tab once paired: generating your own code
 // defaults to Send, claiming someone else's (typed, scanned, or via a
 // scanned link) defaults to Receive.
-let lastIntent = 'send';
+//
+// Also doubles as the deterministic WebRTC offerer/answerer split (see
+// enterActiveState's isOfferer) -- which makes persisting it across a
+// reload load-bearing, not just cosmetic. Found by testing a mid-session
+// reload: without persistence this resets to the 'send' default on every
+// reload, and if the device that originally claimed the code ('receive')
+// reloads, it silently starts computing the SAME role as the other side
+// (both non-offerers), so the offer/answer exchange never happens and the
+// P2P attempt hangs in 'connecting' forever with no error.
+let lastIntent = localStorage.getItem('lastIntent') || 'send';
+function setLastIntent(intent) {
+  lastIntent = intent;
+  localStorage.setItem('lastIntent', intent);
+}
 
 function setStatus(message, variant) {
   statusEl.textContent = message;
@@ -246,6 +269,11 @@ function enterStartState() {
   if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
   advancedSection.style.display = 'none';
   renderTrustedDevicesList();
+  // Whatever P2P-direct items got locally cached for the session that's
+  // now over (see saveReceivedItem in loadBacklog/renderItem below) are no
+  // longer needed -- prune here so the store can't grow across many past
+  // sessions.
+  clearReceivedItems().catch(() => {});
   showOnly('start');
 }
 
@@ -315,7 +343,7 @@ async function tryAutoReconnect(device, triggerBtn) {
       return;
     }
     await saveConfig({ relayUrl: result.relayUrl, token: result.token, expiresAt: result.expiresAt });
-    lastIntent = 'send';
+    setLastIntent('send');
     await showPairedAnimation();
     enterActiveState();
   } catch (err) {
@@ -378,6 +406,7 @@ function enterActiveState() {
   activateTab(lastIntent);
   requestAnimationFrame(positionTabIndicator);
   sseRetryDelay = SSE_BASE_RETRY_MS; // fresh session, fresh backoff
+  renderedLocalItemKeys = new Set(); // fresh session, fresh local-item dedup tracking
   connectReceivedFeed();
 
   // Phase 2a: kick off the P2P attempt (ECDH pubkey exchange + WebRTC
@@ -482,8 +511,8 @@ function pollInvite(relayUrl, code) {
         inviteFrame?.classList.add('locked');
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
-        myRemoteAddr = data.remoteAddr;
-        lastIntent = 'send';
+        setMyRemoteAddr(data.remoteAddr);
+        setLastIntent('send');
         await showPairedAnimation();
         enterActiveState();
       }
@@ -546,7 +575,7 @@ if (showAdvancedBtn && advancedSection) {
 }
 
 async function claimPairingCode(relayUrl, pairingCode) {
-  lastIntent = 'receive';
+  setLastIntent('receive');
   const res = await fetch(`${relayUrl}/pair/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -555,7 +584,7 @@ async function claimPairingCode(relayUrl, pairingCode) {
   if (!res.ok) throw new Error(await parseErrorMessage(res, 'pairing failed'));
   const { token, expiresAt, remoteAddr } = await res.json();
   await saveConfig({ relayUrl, token, expiresAt });
-  myRemoteAddr = remoteAddr;
+  setMyRemoteAddr(remoteAddr);
   clearInterval(invitePollTimer);
   await showPairedAnimation();
   enterActiveState();
@@ -845,7 +874,7 @@ function makeCopyButton(text) {
 // by the content — there's no other item-shaped channel to use without a
 // new relay endpoint, which would defeat "purely client-side"), so it only
 // reveals itself as a control message after decryption.
-async function renderItem(item, { prepend } = { prepend: true }) {
+async function renderItem(item, { prepend, persist = true } = { prepend: true }) {
   if (isControlMessage(item)) {
     await handleTrustHandshake(item);
     return;
@@ -853,6 +882,18 @@ async function renderItem(item, { prepend } = { prepend: true }) {
 
   receivedEmpty.style.display = 'none';
   const { relayUrl, token } = loadConfig();
+
+  // Regression fix: an item sent over the live P2P data channel never
+  // touches the relay, so it has no relay-assigned `id` and GET
+  // /items?since=... can never hand it back after a reload. Cache it
+  // locally so this device's own reload/reconnect can restore it (see
+  // loadBacklog's merge below) -- `persist: false` is passed back in from
+  // that exact restore path so a reload doesn't re-cache what it just
+  // read out of the same cache.
+  if (persist && !item.id && token) {
+    saveReceivedItem(token, item).catch(() => {});
+  }
+
   const row = document.createElement('div');
   // Only a genuinely live SSE arrival gets the "just landed" treatment —
   // backlog items (initial load, reconnect catch-up) appear instantly so
@@ -1030,24 +1071,52 @@ async function renderItem(item, { prepend } = { prepend: true }) {
   }
 }
 
+// Regression fix: local-only cache of items received over the live P2P
+// data channel, which the relay never sees and so can never hand back
+// through GET /items?since=... -- without this, reloading (or an SSE
+// reconnect re-running loadBacklog) mid-session would silently lose them.
+// Keyed by this device's own IndexedDB autoIncrement key rather than a
+// relay id (P2P items don't have one), so repeated loadBacklog calls
+// within the same session -- every SSE reconnect calls it again, not just
+// the first load -- don't re-render the same locally-cached item twice.
+// Reset only when a genuinely new session starts (enterActiveState), not
+// on every reconnect within the same one.
+let renderedLocalItemKeys = new Set();
+
 async function loadBacklog() {
   const { relayUrl, token } = loadConfig();
   if (!token) return;
   const since = Number(localStorage.getItem('lastSeenId') || '0');
+  let relayItems = [];
   try {
     const res = await fetch(`${relayUrl}/items?since=${since}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) return enterEndedState();
-    if (!res.ok) return;
-    const { items } = await res.json();
-    for (const item of items) {
-      await renderItem(item, { prepend: false });
-      localStorage.setItem('lastSeenId', String(item.id));
-    }
+    if (res.ok) ({ items: relayItems } = await res.json());
   } catch {
     // Best-effort — the live SSE stream will still pick up anything new.
   }
+
+  let localEntries = [];
+  try {
+    localEntries = (await listReceivedItems(token)).filter((entry) => !renderedLocalItemKeys.has(entry.key));
+  } catch {
+    // IndexedDB unavailable/broken — not fatal, just skip local restore.
+  }
+
+  const merged = [
+    ...relayItems.map((item) => ({ item })),
+    ...localEntries.map((entry) => ({ item: entry.item, key: entry.key })),
+  ].sort((a, b) => (a.item.createdAt || 0) - (b.item.createdAt || 0));
+
+  let maxRelayId = since;
+  for (const { item, key } of merged) {
+    await renderItem(item, { prepend: false, persist: false });
+    if (item.id && item.id > maxRelayId) maxRelayId = item.id;
+    if (key !== undefined) renderedLocalItemKeys.add(key);
+  }
+  if (maxRelayId > since) localStorage.setItem('lastSeenId', String(maxRelayId));
 }
 
 function setConnPill(state) {
