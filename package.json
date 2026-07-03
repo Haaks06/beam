@@ -1,7 +1,7 @@
 {
   "name": "beam",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.14.0",
   "description": "Beam a link or photo between two devices, ephemerally, in a couple minutes",
   "workspaces": [
     "relay-server",
