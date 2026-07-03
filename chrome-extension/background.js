@@ -17,11 +17,21 @@ async function focusOrCreateWindow() {
       beamWindowId = null;
     }
   }
+  // Sized to fit the invite screen (the tallest one, on account of the QR
+  // code) without scrolling at web-client's compacted spacing — see
+  // web-client/src/styles.css. Was 420x640, which left a lot of empty popup
+  // below the actual content.
+  // /app specifically, not the bare root — root now serves beamlot.com's
+  // marketing landing page; the actual pairing app lives at /app (see
+  // relay-server/index.js's routing). ?src=extension lets web-client
+  // (src/app.js) tell this context apart from a phone/desktop browser — a
+  // laptop webcam scanning a phone's QR isn't a real flow, so that button
+  // hides here specifically.
   const win = await chrome.windows.create({
-    url: RELAY_URL,
+    url: `${RELAY_URL}/app?src=extension`,
     type: 'popup',
-    width: 420,
-    height: 640,
+    width: 400,
+    height: 600,
   });
   beamWindowId = win.id;
 }
