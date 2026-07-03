@@ -13,6 +13,7 @@ const inboxRoutes = require('./routes/inbox');
 const pairRoutes = require('./routes/pair');
 const itemRoutes = require('./routes/items');
 const streamRoutes = require('./routes/stream');
+const signalRoutes = require('./routes/signal');
 const { startSessionCleanup } = require('./lib/sessionCleanup');
 
 const app = express();
@@ -73,6 +74,10 @@ app.use('/items', itemLimiter, itemRoutes);
 
 app.use('/events', streamRoutes);
 
+// /signal's own rate limiter lives in routes/signal.js — sized for how
+// bursty ICE candidate exchange actually is, not shared with /items.
+app.use('/signal', signalRoutes);
+
 // Exposes the deployed version so the web client can show it and so anyone
 // checking "is my deploy actually live" has a real answer instead of guessing.
 app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
@@ -96,7 +101,7 @@ if (fs.existsSync(webClientDist)) {
   // /ABC123 (see relay-server/routes/pair.js's pairingUrl) — is the actual
   // app. web-client's own client-side routing (see parsePairingLink() in
   // src/app.js) figures out from the path which of those it is.
-  app.get(/^(?!\/(inbox|pair|items|events|health)).*/, (req, res) => {
+  app.get(/^(?!\/(inbox|pair|items|events|health|signal)).*/, (req, res) => {
     res.sendFile(path.join(webClientDist, 'index.html'));
   });
 }

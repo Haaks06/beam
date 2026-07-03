@@ -45,4 +45,24 @@ function expireInbox(inboxId) {
   subscribers.delete(inboxId);
 }
 
-module.exports = { subscribe, broadcast, expireInbox };
+// Targeted delivery to "the other device" for WebRTC/E2E signaling (see
+// routes/signal.js) — distinct from broadcast() above in two ways: it's a
+// named `signal` SSE event rather than the generic unnamed item event (so
+// the client can tell them apart via its own addEventListener('signal',
+// ...)), and it reports back whether there was actually anyone to deliver
+// to, since signaling has no persistence/replay — the caller uses that to
+// answer 404 when the other device isn't currently connected.
+function sendSignal(inboxId, fromDeviceId, data) {
+  const set = subscribers.get(inboxId);
+  if (!set) return false;
+  const payload = `event: signal\ndata: ${JSON.stringify(data)}\n\n`;
+  let delivered = false;
+  for (const { res, deviceId } of set) {
+    if (deviceId === fromDeviceId) continue;
+    res.write(payload);
+    delivered = true;
+  }
+  return delivered;
+}
+
+module.exports = { subscribe, broadcast, expireInbox, sendSignal };
