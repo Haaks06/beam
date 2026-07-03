@@ -1680,6 +1680,80 @@ if (recordVoiceBtn) {
   }
 }
 
+// Phase 3b: chrome-extension's right-click "Beam this image/link" context
+// menu items. The extension's background.js can't reach this page's own
+// module state directly (no stable, published extension ID to address
+// before this actually ships to the Web Store — see chrome-extension's
+// STORE_LISTING.md), so chrome-extension/content-bridge.js -- a content
+// script, which always has an implicit channel to its own extension's
+// background regardless of ID -- relays the pending share in over
+// window.postMessage instead. Entirely inert for every normal visit
+// (phone, desktop app, plain browser): isExtensionPopup is only true when
+// background.js itself opened this exact tab.
+if (isExtensionPopup) {
+  window.addEventListener('message', async (event) => {
+    if (event.origin !== window.location.origin) return;
+    const share = event.data;
+    if (!share || share.source !== 'beam-extension') return;
+
+    if (share.kind === 'error') {
+      setStatus(share.message, 'error');
+      return;
+    }
+
+    const { relayUrl, token, expiresAt } = loadConfig();
+    if (!token || !expiresAt || expiresAt <= Date.now()) {
+      setStatus('Pair this device first, then use "Beam this…" again.', 'error');
+      return;
+    }
+
+    try {
+      if (share.kind === 'link') {
+        setStatus('Sending...');
+        let sentDirect = false;
+        if (p2pController) {
+          await p2pController.waitUntilReady();
+          sentDirect = p2pController.trySendDirect({ type: 'link', content: share.url, createdAt: Date.now() });
+        }
+        if (!sentDirect) {
+          const encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(share.url));
+          const body = encryptedBuf ? { url: bufToBase64(encryptedBuf), encrypted: true } : { url: share.url };
+          const res = await fetch(`${relayUrl}/items/link`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (res.status === 401) return enterEndedState();
+          if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+        }
+        setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): "${truncate(share.url, 60)}"`, 'success');
+      } else if (share.kind === 'image') {
+        setStatus('Sending image...');
+        const fileBuf = base64ToBuf(share.dataBase64);
+        const mimeType = share.mimeType || 'image/jpeg';
+        let sentDirect = false;
+        if (p2pController) {
+          await p2pController.waitUntilReady();
+          sentDirect = p2pController.trySendDirect({ type: 'photo', mimeType, dataBase64: share.dataBase64, createdAt: Date.now() });
+        }
+        if (!sentDirect) {
+          const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+          const res = await fetch(`${relayUrl}/items/photo${encryptedBuf ? '?encrypted=true' : ''}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
+            body: encryptedBuf || fileBuf,
+          });
+          if (res.status === 401) return enterEndedState();
+          if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
+        }
+        setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): image`, 'success');
+      }
+    } catch (err) {
+      setStatus(`Failed to send: ${err.message}`, 'error');
+    }
+  });
+}
+
 const shareStatus = new URLSearchParams(window.location.search).get('shared');
 if (shareStatus === 'ok') setStatus('Shared!', 'success');
 if (shareStatus === 'error') setStatus('Share failed — check pairing.', 'error');
