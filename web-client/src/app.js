@@ -1462,12 +1462,71 @@ let voiceRecorder = null;
 let voiceChunks = [];
 let voiceStream = null;
 
+// A quick accidental tap on the record button used to start recording
+// immediately, which was easy to trigger by mistake. Now a press has to be
+// held past RECORD_ARM_DELAY_MS before it actually starts -- a tap shorter
+// than that does nothing at all. recordState drives both the button's
+// visual state (idle/arming/recording/sent, see styles.css) and the
+// control flow below.
+const RECORD_ARM_DELAY_MS = 350;
+let recordState = 'idle'; // 'idle' | 'arming' | 'recording' | 'sent'
+let armTimer = null;
+let sentResetTimer = null;
+// getUserMedia's permission prompt (first use) can take long enough that
+// the user releases before it resolves -- without tracking this, that
+// release would silently no-op (stopVoiceRecordingAndSend's own guard
+// bails out when voiceRecorder is still null) and recording would start
+// anyway right after release and never stop.
+let releaseRequestedWhileStarting = false;
+
+function setRecordState(state) {
+  recordState = state;
+  recordVoiceBtn.classList.remove('arming', 'recording', 'sent');
+  if (state !== 'idle') recordVoiceBtn.classList.add(state);
+}
+
+function beginRecordPress() {
+  if (recordState !== 'idle') return; // already arming/recording/sent -- ignore a duplicate press event
+  clearTimeout(sentResetTimer);
+  setRecordState('arming');
+  voiceRecordStatus.textContent = 'Keep holding…';
+  armTimer = setTimeout(() => {
+    armTimer = null;
+    startVoiceRecording();
+  }, RECORD_ARM_DELAY_MS);
+}
+
+function endRecordPress() {
+  if (recordState === 'arming') {
+    // Released before the arm delay elapsed -- exactly the accidental-tap
+    // case this is meant to absorb. Nothing was ever recorded.
+    clearTimeout(armTimer);
+    armTimer = null;
+    setRecordState('idle');
+    voiceRecordStatus.textContent = '';
+    return;
+  }
+  if (recordState === 'recording') {
+    if (!voiceRecorder) {
+      // Still waiting on getUserMedia -- see releaseRequestedWhileStarting's
+      // comment above. startVoiceRecording checks this flag once the
+      // recorder actually starts.
+      releaseRequestedWhileStarting = true;
+      return;
+    }
+    stopVoiceRecordingAndSend();
+  }
+}
+
 async function startVoiceRecording() {
   if (voiceRecorder) return; // already recording -- ignore a duplicate press
+  setRecordState('recording');
+  voiceRecordStatus.textContent = 'Recording… release to send';
   try {
     voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     voiceRecordStatus.textContent = `Couldn't access the microphone: ${err.message}`;
+    setRecordState('idle');
     return;
   }
   voiceChunks = [];
@@ -1476,12 +1535,17 @@ async function startVoiceRecording() {
     if (event.data.size > 0) voiceChunks.push(event.data);
   };
   voiceRecorder.start();
-  recordVoiceBtn.classList.add('recording');
-  voiceRecordStatus.textContent = 'Recording… release to send';
+  if (releaseRequestedWhileStarting) {
+    releaseRequestedWhileStarting = false;
+    stopVoiceRecordingAndSend();
+  }
 }
 
 async function stopVoiceRecordingAndSend() {
-  if (!voiceRecorder || voiceRecorder.state === 'inactive') return;
+  if (!voiceRecorder || voiceRecorder.state === 'inactive') {
+    setRecordState('idle');
+    return;
+  }
   const mimeType = voiceRecorder.mimeType || 'audio/webm';
   const stopped = new Promise((resolve) => {
     voiceRecorder.onstop = resolve;
@@ -1489,7 +1553,6 @@ async function stopVoiceRecordingAndSend() {
   voiceRecorder.stop();
   await stopped;
   for (const track of voiceStream.getTracks()) track.stop();
-  recordVoiceBtn.classList.remove('recording');
 
   const blob = new Blob(voiceChunks, { type: mimeType });
   voiceRecorder = null;
@@ -1498,12 +1561,14 @@ async function stopVoiceRecordingAndSend() {
 
   if (blob.size === 0) {
     voiceRecordStatus.textContent = 'Recording was empty — hold the button a moment longer.';
+    setRecordState('idle');
     return;
   }
 
   const { relayUrl, token } = loadConfig();
   if (!token) {
     voiceRecordStatus.textContent = 'Pair this device first.';
+    setRecordState('idle');
     return;
   }
   try {
@@ -1541,20 +1606,27 @@ async function stopVoiceRecordingAndSend() {
       if (res.status === 401) return enterEndedState();
       if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
     }
+    setRecordState('sent');
     voiceRecordStatus.textContent = `Sent (${sentDirect ? 'direct' : 'relayed'}) — hold to record another.`;
+    // "Sent" is a brief confirmation, not a sticky state -- back to idle
+    // once it's had a moment to register.
+    sentResetTimer = setTimeout(() => {
+      if (recordState === 'sent') setRecordState('idle');
+    }, 1500);
   } catch (err) {
     voiceRecordStatus.textContent = `Failed to send: ${err.message}`;
+    setRecordState('idle');
   }
 }
 
 if (recordVoiceBtn) {
-  recordVoiceBtn.addEventListener('mousedown', startVoiceRecording);
+  recordVoiceBtn.addEventListener('mousedown', beginRecordPress);
   recordVoiceBtn.addEventListener('touchstart', (event) => {
     event.preventDefault(); // avoid the synthetic mousedown that would otherwise also fire
-    startVoiceRecording();
+    beginRecordPress();
   });
   for (const evt of ['mouseup', 'mouseleave', 'touchend', 'touchcancel']) {
-    recordVoiceBtn.addEventListener(evt, stopVoiceRecordingAndSend);
+    recordVoiceBtn.addEventListener(evt, endRecordPress);
   }
 }
 
