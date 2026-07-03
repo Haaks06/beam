@@ -31,10 +31,16 @@ db.exec(`
     last_seen_at INTEGER
   );
 
+  -- type's allowed values (link, photo, file, voice) are enforced in
+  -- application code (routes/items.js), not a CHECK constraint here —
+  -- SQLite can't alter a CHECK constraint in place, so encoding the
+  -- allowlist in the schema itself would mean rebuilding this table every
+  -- time a new item type is added. See the one-time rebuild migration
+  -- below that already had to happen once for exactly this reason.
   CREATE TABLE IF NOT EXISTS items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     inbox_id INTEGER NOT NULL REFERENCES inboxes(id),
-    type TEXT NOT NULL CHECK(type IN ('link','photo')),
+    type TEXT NOT NULL,
     content TEXT,
     file_path TEXT,
     mime_type TEXT,
@@ -107,6 +113,57 @@ if (!itemsColumnsForDevice.some((c) => c.name === 'from_device_id')) {
 const itemsColumnsForEncrypted = db.prepare('PRAGMA table_info(items)').all();
 if (!itemsColumnsForEncrypted.some((c) => c.name === 'encrypted')) {
   db.exec('ALTER TABLE items ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0');
+}
+
+// One-time rebuild: the original `items` table (see the CREATE TABLE
+// above, now updated) was created with CHECK(type IN ('link','photo')),
+// which blocks the 'file' and 'voice' types added for wider item types.
+// SQLite has no ALTER TABLE support for modifying a CHECK constraint, so
+// an already-deployed database keeps its original constraint forever
+// unless the table is rebuilt — the standard, documented SQLite approach
+// (new table, copy rows, drop old, rename) rather than leaving production
+// permanently stuck on a schema that only fresh installs get away from.
+// Detected by inspecting the table's own stored CREATE statement in
+// sqlite_master rather than trying to run a canary INSERT and roll it
+// back, which would needlessly burn an autoincrement id every single
+// startup on every already-migrated database from now on.
+//
+// PRAGMA foreign_keys is switched off for the duration of the rebuild —
+// this codebase has already hit real, production dangling-reference rows
+// once (see the accounts/connections/connect_codes cleanup below, and
+// from_inbox_id's own comment above: an item can still carry a
+// from_inbox_id pointing at a since-deleted inbox from the old
+// friend-sharing era). A plain bulk INSERT validates FK constraints
+// against every row, so any such pre-existing orphaned reference would
+// otherwise crash this migration outright on its very first run against
+// production. This is SQLite's own documented safe procedure for
+// rebuilding a table, not a workaround specific to this migration.
+const itemsTableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'").get();
+if (itemsTableDef && itemsTableDef.sql.includes("CHECK(type IN ('link','photo'))")) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`
+    CREATE TABLE items_rebuild (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      inbox_id INTEGER NOT NULL REFERENCES inboxes(id),
+      type TEXT NOT NULL,
+      content TEXT,
+      file_path TEXT,
+      mime_type TEXT,
+      source_label TEXT,
+      created_at INTEGER NOT NULL,
+      from_inbox_id INTEGER REFERENCES inboxes(id),
+      from_device_id INTEGER REFERENCES devices(id),
+      encrypted INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO items_rebuild
+      SELECT id, inbox_id, type, content, file_path, mime_type, source_label, created_at,
+             from_inbox_id, from_device_id, encrypted
+      FROM items;
+    DROP TABLE items;
+    ALTER TABLE items_rebuild RENAME TO items;
+    CREATE INDEX IF NOT EXISTS idx_items_inbox_id ON items(inbox_id);
+  `);
+  db.exec('PRAGMA foreign_keys = ON');
 }
 
 // accounts/connections/connect_codes are leftovers from the pre-ephemeral

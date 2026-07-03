@@ -143,6 +143,41 @@ test('adds paired_at/expires_at to an existing inboxes table without erroring or
   const itemsColumns = db.prepare('PRAGMA table_info(items)').all().map((c) => c.name);
   assert.ok(itemsColumns.includes('from_device_id'));
   assert.equal(item.from_device_id, null);
+  assert.ok(itemsColumns.includes('encrypted'));
+  assert.equal(item.encrypted, 0);
+});
+
+// The whole point of the items table rebuild: this era's schema has
+// CHECK(type IN ('link','photo')), which a plain ALTER TABLE can't lift —
+// confirms the rebuild actually ran (not just that nothing crashed) by
+// inserting one of the new types it was blocking before.
+test('the items table rebuild actually lifts the old type CHECK constraint, not just avoids crashing', () => {
+  const db = require('../db');
+  let fileId, voiceId;
+  assert.doesNotThrow(() => {
+    fileId = db
+      .prepare(
+        "INSERT INTO items (inbox_id, type, content, source_label, created_at) VALUES (1, 'file', 'report.pdf', 'PC', ?)"
+      )
+      .run(Date.now()).lastInsertRowid;
+  });
+  assert.doesNotThrow(() => {
+    voiceId = db
+      .prepare(
+        "INSERT INTO items (inbox_id, type, file_path, mime_type, source_label, created_at) VALUES (1, 'voice', 'memo.webm', 'audio/webm', 'PC', ?)"
+      )
+      .run(Date.now()).lastInsertRowid;
+  });
+  // Pre-existing rows (including the dangling-from_inbox_id one from the
+  // seed above) are still exactly as they were -- the rebuild is a copy,
+  // not a reset.
+  const preExisting = db.prepare('SELECT * FROM items WHERE id = 1').get();
+  assert.equal(preExisting.content, 'https://example.com/pre-existing');
+  const stillDangling = db.prepare('SELECT * FROM items WHERE id = 2').get();
+  assert.equal(stillDangling.from_inbox_id, 1);
+  // Clean up -- later tests in this file (deliberately) share this same
+  // seeded database and assert an exact item count for inbox 1.
+  db.prepare('DELETE FROM items WHERE id IN (?, ?)').run(fileId, voiceId);
 });
 
 test('migration is idempotent — requiring db.js again does not error or duplicate columns', () => {
