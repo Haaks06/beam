@@ -40,4 +40,4 @@ const upload = multer({
   },
 });
 
-module.exports = { upload, UPLOAD_DIR, ALLOWED_MIME_EXT };
+module.exports = { upload, UPLOAD_DIR, ALLOWED_MIME_EXT, MAX_UPLOAD_BYTES };

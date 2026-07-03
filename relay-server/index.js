@@ -80,9 +80,22 @@ app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
 // Serve the built PWA from the same origin/process when available, so a
 // single relay URL (and a single tunnel/cert in production) covers both
 // the API and the pairing/share page the QR code points at.
+//
+// Two HTML entry points live in web-client/dist (see web-client/vite.config.js's
+// multi-page build): landing.html is beamlot.com's marketing homepage, and
+// index.html is the actual pairing app, now served at /app instead of the
+// bare root. { index: false } turns off express.static's own automatic
+// "serve index.html for a directory request" behavior — without it, a
+// request for "/" would be answered by the static middleware itself before
+// ever reaching the explicit landing-page route below.
 const webClientDist = path.join(__dirname, '..', 'web-client', 'dist');
 if (fs.existsSync(webClientDist)) {
-  app.use(express.static(webClientDist));
+  app.use(express.static(webClientDist, { index: false }));
+  app.get('/', (req, res) => res.sendFile(path.join(webClientDist, 'landing.html')));
+  // Everything else non-API — /app itself, and pairing-code links like
+  // /ABC123 (see relay-server/routes/pair.js's pairingUrl) — is the actual
+  // app. web-client's own client-side routing (see parsePairingLink() in
+  // src/app.js) figures out from the path which of those it is.
   app.get(/^(?!\/(inbox|pair|items|events|health)).*/, (req, res) => {
     res.sendFile(path.join(webClientDist, 'index.html'));
   });

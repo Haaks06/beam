@@ -1,9 +1,10 @@
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const express = require('express');
 const db = require('../db');
 const { requireToken } = require('../auth');
-const { upload, UPLOAD_DIR, ALLOWED_MIME_EXT } = require('../lib/upload');
+const { upload, UPLOAD_DIR, ALLOWED_MIME_EXT, MAX_UPLOAD_BYTES } = require('../lib/upload');
 const { sniffImageMime } = require('../lib/sniffImageType');
 const sse = require('../lib/sse');
 
@@ -34,7 +35,12 @@ router.post('/link', (req, res) => {
   // URLs — requiring a scheme meant typing "example.com" or pasting a note
   // failed outright. The web client only linkifies content that actually
   // parses as a URL; anything else renders as plain text.
-  const { url } = req.body || {};
+  //
+  // Query-param fallback alongside the JSON body: the iOS Shortcut (see
+  // ios-shortcut/) builds this as a URL string with embedded variables
+  // (token + the shared content) rather than a JSON body — much simpler to
+  // hand-author correctly in Apple's Shortcuts file format.
+  const url = (req.body && req.body.url) || req.query.url;
   const content = typeof url === 'string' ? url.trim() : '';
   if (!content) {
     return res.status(400).json({ error: 'text is required' });
@@ -56,17 +62,12 @@ router.post('/link', (req, res) => {
   res.status(201).json(item);
 });
 
-router.post('/photo', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'file is required' });
-  }
-
-  // multer's fileFilter (see lib/upload.js) only ever saw the client's
-  // self-reported Content-Type header, which is trivial to spoof -- upload
-  // anything, claim "image/png". This reads the real bytes just written to
-  // disk and rejects anything whose actual magic number isn't one of the
-  // allowed image formats, regardless of what the client claimed.
-  const filePath = path.join(UPLOAD_DIR, req.file.filename);
+// Shared by both ingestion paths below: sniffs the real bytes on disk
+// against each allowed format's magic number (see lib/sniffImageType.js) —
+// a spoofed Content-Type/mimetype doesn't get a file accepted on its word
+// alone — then records the item and broadcasts it.
+function finishPhotoUpload(req, res, filename, declaredMime) {
+  const filePath = path.join(UPLOAD_DIR, filename);
   const head = Buffer.alloc(16);
   const fd = fs.openSync(filePath, 'r');
   fs.readSync(fd, head, 0, 16, 0);
@@ -80,8 +81,8 @@ router.post('/photo', upload.single('file'), (req, res) => {
   const createdAt = Date.now();
   const result = insertPhoto.run(
     req.device.inbox_id,
-    req.file.filename,
-    req.file.mimetype,
+    filename,
+    declaredMime,
     req.device.label,
     createdAt,
     req.device.id
@@ -89,14 +90,43 @@ router.post('/photo', upload.single('file'), (req, res) => {
   const item = {
     id: result.lastInsertRowid,
     type: 'photo',
-    mimeType: req.file.mimetype,
+    mimeType: declaredMime,
     sourceLabel: req.device.label,
     createdAt,
     fileUrl: `/items/${result.lastInsertRowid}/file`,
   };
   sse.broadcast(req.device.inbox_id, item, req.device.id);
   res.status(201).json(item);
-});
+}
+
+// A raw image body (Content-Type: image/jpeg etc, bytes as the entire
+// body) is a second, simpler way in alongside the multipart form the web
+// client uses — Apple's Shortcuts app can set a request body to a file's
+// raw contents directly, but hand-authoring a correct multipart/form-data
+// body in that file format is the single most error-prone part of it (see
+// ios-shortcut/). Only engaged when Content-Type isn't multipart at all,
+// so the existing web-client upload path below is completely unaffected.
+const rawImageBody = express.raw({ type: Object.keys(ALLOWED_MIME_EXT), limit: MAX_UPLOAD_BYTES });
+
+router.post(
+  '/photo',
+  (req, res, next) => (req.is('multipart/form-data') ? next() : rawImageBody(req, res, next)),
+  (req, res, next) => {
+    if (req.is('multipart/form-data') || !Buffer.isBuffer(req.body) || req.body.length === 0) return next();
+    const declaredMime = (req.get('content-type') || '').split(';')[0].trim();
+    const ext = ALLOWED_MIME_EXT[declaredMime] || '';
+    const filename = `${crypto.randomUUID()}${ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, filename), req.body);
+    finishPhotoUpload(req, res, filename, declaredMime);
+  },
+  upload.single('file'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' });
+    }
+    finishPhotoUpload(req, res, req.file.filename, req.file.mimetype);
+  }
+);
 
 // GET /items?since=<id> — backlog/catch-up endpoint. SSE has no delivery
 // guarantee across reconnects, so clients pull anything missed using this.

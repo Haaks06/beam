@@ -72,10 +72,15 @@ router.post('/init', mutationLimiter, requireToken, async (req, res) => {
   insertPairing.run(req.device.inbox_id, code, now, now + CODE_TTL_MS);
 
   const relayUrl = `${req.protocol}://${req.get('host')}`;
-  // Encode a real, openable URL (not bare JSON) so any phone camera can
-  // scan it directly into a browser. The web client reads ?relay=&code=
-  // from the query string to prefill the pairing form.
-  const pairingUrl = `${relayUrl}/?relay=${encodeURIComponent(relayUrl)}&code=${code}`;
+  // A real, openable URL (not bare JSON) so any phone camera can scan it
+  // directly into a browser. Path-based (beamsend.com/ABC123) rather than
+  // ?relay=&code= — nicer to share/read aloud, and the relay is always
+  // implied by the link's own origin anyway (this same server serves both
+  // the API and the web client — see relay-server/index.js). The web client
+  // (see parsePairingLink() in web-client/src/app.js) still understands the
+  // old ?relay=&code= query-string form too, for any link already in
+  // circulation.
+  const pairingUrl = `${relayUrl}/${code}`;
   const qrDataUrl = await QRCode.toDataURL(pairingUrl);
 
   res.json({ pairingCode: code, relayUrl, pairingUrl, qrDataUrl, expiresAt: now + CODE_TTL_MS });
@@ -86,7 +91,13 @@ router.post('/init', mutationLimiter, requireToken, async (req, res) => {
 // Unauthenticated by necessity: the claiming device doesn't have a token yet.
 // Claiming the second device is what starts the 2-minute session clock.
 router.post('/claim', mutationLimiter, (req, res) => {
-  const { pairingCode, label } = req.body || {};
+  // Query-param fallback alongside the JSON body: the iOS Shortcut (see
+  // ios-shortcut/) builds its whole request as a URL string with an
+  // embedded variable, which is a far simpler, less error-prone thing to
+  // hand-author in Apple's Shortcuts file format than a JSON request body.
+  // Body still wins if both are somehow present.
+  const pairingCode = (req.body && req.body.pairingCode) || req.query.pairingCode;
+  const label = (req.body && req.body.label) || req.query.label;
   if (!pairingCode || typeof pairingCode !== 'string') {
     return res.status(400).json({ error: 'pairingCode is required' });
   }
