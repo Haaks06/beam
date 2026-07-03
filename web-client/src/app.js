@@ -195,18 +195,20 @@ let inviteGeneration = 0;
 // There's no upfront "I want to send" / "I want to receive" choice anymore
 // — connecting always shows your own QR AND a code-entry field at once,
 // whichever side of the pairing actually completes it first. This only
-// picks a sensible default tab once paired: generating your own code
-// defaults to Send, claiming someone else's (typed, scanned, or via a
-// scanned link) defaults to Receive.
+// picks a sensible default tab once paired: claiming someone else's code
+// (typed, scanned, or via a scanned link) defaults to Send -- you scanned
+// it because you want to send THEM something -- and generating your own
+// code defaults to Receive, since that device is the one waiting for
+// something to arrive.
 //
 // Also doubles as the deterministic WebRTC offerer/answerer split (see
 // enterActiveState's isOfferer) -- which makes persisting it across a
 // reload load-bearing, not just cosmetic. Found by testing a mid-session
 // reload: without persistence this resets to the 'send' default on every
-// reload, and if the device that originally claimed the code ('receive')
-// reloads, it silently starts computing the SAME role as the other side
-// (both non-offerers), so the offer/answer exchange never happens and the
-// P2P attempt hangs in 'connecting' forever with no error.
+// reload, and if the device that originally claimed the code reloads, it
+// silently starts computing the SAME role as the other side (both
+// non-offerers), so the offer/answer exchange never happens and the P2P
+// attempt hangs in 'connecting' forever with no error.
 let lastIntent = localStorage.getItem('lastIntent') || 'send';
 function setLastIntent(intent) {
   lastIntent = intent;
@@ -413,11 +415,12 @@ function enterActiveState() {
   // offer/answer/ICE, all over /signal) the moment a session goes active.
   // isOfferer needs to be a deterministic, already-established asymmetry
   // between the two devices rather than a race — lastIntent already
-  // captures exactly that: 'receive' means this device just claimed the
-  // other's pairing code (see claimPairingCode()), 'send' means it's the
-  // one that generated the code. Arbitrary which side offers as long as
-  // both sides agree, and they always do since it's derived the same way
-  // on both ends of one pairing.
+  // captures exactly that: 'send' means this device just claimed the
+  // other's pairing code (see claimPairingCode()) and defaults to the Send
+  // tab, 'receive' means it's the one that generated the code and is
+  // defaulting to Receive. Arbitrary which side offers as long as both
+  // sides agree, and they always do since it's derived the same way on
+  // both ends of one pairing.
   const { relayUrl: p2pRelayUrl, token: p2pToken } = loadConfig();
   p2pController?.teardown();
   p2pController = initP2P({
@@ -527,7 +530,10 @@ function pollInvite(relayUrl, code) {
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
         setMyRemoteAddr(data.remoteAddr);
-        setLastIntent('send');
+        // This device generated the code and is the one that was waiting —
+        // whoever just scanned/typed it did so because THEY want to send
+        // something, so the initiator's natural role is Receive.
+        setLastIntent('receive');
         await showPairedAnimation();
         enterActiveState();
       }
@@ -590,7 +596,10 @@ if (showAdvancedBtn && advancedSection) {
 }
 
 async function claimPairingCode(relayUrl, pairingCode) {
-  setLastIntent('receive');
+  // This device just scanned/typed someone else's code -- that's something
+  // you do because you want to send them something, not because you're
+  // waiting to receive.
+  setLastIntent('send');
   const res = await fetch(`${relayUrl}/pair/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
