@@ -1,7 +1,7 @@
 import './styles.css';
 import jsQR from 'jsqr';
 
-const DB_NAME = 'share-to-pc';
+const DB_NAME = 'beam';
 const STORE_NAME = 'config';
 
 function openDb() {

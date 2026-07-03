@@ -12,7 +12,13 @@ primary_region = "ams"
   UPLOAD_DIR = "/data/uploads"
   MAX_UPLOAD_BYTES = "15728640"
   CORS_ORIGIN = ""
-  INBOX_LIMIT_PER_HOUR = "5"
+  # Renamed from INBOX_LIMIT_PER_HOUR during the rate-limit redesign (see
+  # relay-server/index.js) -- the old name is silently ignored by the code
+  # now, so this stayed unset in production and fell back to the code
+  # default. Set explicitly here so the deployed limit is intentional, not
+  # an accident of a stale var name.
+  INBOX_LIMIT_WINDOW_MS = "600000"
+  INBOX_LIMIT_PER_WINDOW = "200"
 
 [[mounts]]
   source = "beam_data"

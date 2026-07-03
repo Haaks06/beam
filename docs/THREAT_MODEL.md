@@ -33,9 +33,12 @@ token for that specific, currently-live pairing.
   single-use, drawn from a 33-character alphabet at length 6 (~33^6 ≈ 1.3
   billion combinations), and `/pair/*` is rate-limited.
 - Mass inbox creation: `POST /inbox` is unauthenticated by necessity (it's
-  how you get your first token), so it has its own stricter rate limit
-  (default 30/hour/IP) separate from `/pair/*`, since it's the one
-  remaining fully open endpoint on a shared relay.
+  how you get your first token), so it has its own rate limit (default 200
+  per 10-minute window per IP) separate from `/pair/*`, since it's the one
+  remaining fully open endpoint on a shared relay. `/pair/*` itself splits
+  the read-only status-polling route (generous, since a normal connect
+  screen polls it every 2 seconds) from the actual pairing mutations
+  (tighter), so two different concerns never share one bucket.
 - **A token outliving its usefulness.** Every pairing self-destructs 2
   minutes after both devices join, and any pairing nobody ever finishes
   pairing is swept after 10 minutes too (same TTL as its pairing code) — a
@@ -62,8 +65,12 @@ token for that specific, currently-live pairing.
   exposure while it lasts. This is the same trust boundary as any
   self-hosted personal server.
 - **Malicious file content.** Uploads are restricted to a small image MIME
-  allowlist and never executed or interpreted server-side, but this project
-  does not deeply validate file contents beyond mimetype/extension (e.g. no
-  magic-byte sniffing). Acceptable for a personal, single-user tool; would
-  need hardening (e.g. the `file-type` package, image re-encoding) before
-  ever accepting uploads from untrusted parties.
+  allowlist, never executed or interpreted server-side, and the actual
+  bytes are checked against each allowed format's real magic number after
+  upload (`lib/sniffImageType.js`) — a file whose content doesn't match any
+  allowed image format is rejected and deleted regardless of what
+  `Content-Type` it claimed. This still isn't full content validation (no
+  image re-encoding, no scan for malformed/exploit-crafted-but-technically-
+  valid image data) — acceptable for what this protects against (arbitrary
+  non-image files masquerading as images), not a substitute for antivirus
+  scanning if that threat model ever applies.

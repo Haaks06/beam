@@ -1,72 +1,74 @@
-# Hosting on Render (free tier)
+# Hosting on Fly.io
 
-> **⚠️ Render's free tier disk is EPHEMERAL.** Every device pairing, every
-> stored link, and every uploaded photo can be silently wiped whenever
-> Render redeploys the service or recycles the underlying instance. This is
-> a deliberate tradeoff for a free/personal-scale deployment, **not a
-> bug** — see [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) for how the app
-> tolerates this without crashing (it just quietly starts a fresh, empty
-> database). If this becomes a real problem for you or the people you've
-> shared this with:
-> - Upgrade to Render's paid persistent disk add-on, mounted at the same
->   `DB_PATH`/`UPLOAD_DIR` paths already configured below — no code changes
->   needed, since both are already just filesystem paths read from
->   environment variables.
-> - Or migrate to [Fly.io](https://fly.io), which offers a small persistent
->   volume even on its free/hobby tier. Same story: no app code changes,
->   just different infra pointing at the same env vars.
+This is what `beam-wckn2w.fly.dev` (the production instance this repo's
+README links to) actually runs. Fly's free/hobby tier includes a small
+persistent volume, so pairings and uploaded files survive restarts and
+redeploys instead of being wiped — the main reason this project moved off
+Render's free tier, where the disk is ephemeral.
 
-## Setup (using the `render.yaml` blueprint)
+## Setup
 
-1. Push this repo to GitHub (Render deploys from a git repo).
-2. In the [Render dashboard](https://dashboard.render.com), click **New +**
-   → **Blueprint**, and point it at your repo. Render reads
-   [`render.yaml`](../render.yaml) from the repo root automatically and
-   configures the service for you — build command, start command, health
-   check, and environment variables are all already defined there.
-3. Click **Apply** / **Create**. Render will run:
-   - Build: `npm install --include=dev && npm run build:web` — installs
-     all three workspaces (including devDependencies like `vite`, which
-     Render's default `NODE_ENV=production` during builds would otherwise
-     skip) and builds the PWA into `web-client/dist`.
-   - Start: `npm run start:relay` — runs `node index.js`, which already
-     detects and serves `web-client/dist` if present (see the
-     static-serving block in `relay-server/index.js`), so one Render
-     service serves both the API and the web client from one URL.
-4. Once deployed, you'll get a URL like `https://share-to-pc-relay.onrender.com`.
-   Confirm it's live: `curl https://share-to-pc-relay.onrender.com/health`
-   should return `{"ok":true}` (the first request after a cold start may
-   take 30-60+ seconds — see below).
+1. Install `flyctl` and sign in: see
+   [Fly's install docs](https://fly.io/docs/flyctl/install/), then
+   `flyctl auth login`.
+2. First time only — create the app (this repo's [`fly.toml`](../fly.toml)
+   already defines the region, env vars, health check, and mount, so
+   `flyctl launch` mostly just needs to confirm them):
+   ```bash
+   flyctl launch
+   ```
+3. Create the persistent volume `fly.toml` expects (`beam_data`, mounted at
+   `/data` — this is where `DB_PATH`/`UPLOAD_DIR` point):
+   ```bash
+   flyctl volumes create beam_data --size 1 --region ams
+   ```
+   Volumes are region-locked — use the same region as `primary_region` in
+   `fly.toml`.
+4. Build the web client and deploy:
+   ```bash
+   npm run build:web
+   flyctl deploy
+   ```
+   `relay-server/index.js` already serves `web-client/dist` as static files
+   when present, so one deploy covers both the API and the web client.
+5. Confirm it's live: `curl https://<your-app>.fly.dev/health` should
+   return `{"ok":true,"version":"..."}`.
 
-## Cold starts
+## Why `min_machines_running = 1`
 
-Render's free tier spins the service down after ~15 minutes of no
-requests. The next request wakes it back up, which can take 30-60+
-seconds. This is expected — if a friend shares a link and "nothing
-happens" for a minute, the relay is just waking up; the item still arrives
-once it's up (and the desktop app's backlog endpoint, `GET /items?since=`,
-catches up anything it might have missed while reconnecting).
+`fly.toml` sets `auto_stop_machines = false` and `min_machines_running = 1`
+— the machine never scales to zero. This matters specifically because
+pairings are already short-lived (2 minutes) by design; a cold start on
+top of that would eat into the pairing window itself, unlike a normal
+always-warm web app where a slow first request is just mildly annoying.
 
-## Environment variables (if not using the blueprint)
+## Environment variables
 
-If you'd rather configure the service by hand in Render's dashboard
-(Environment tab) instead of via `render.yaml`, set these — see
-[`.env.example`](../.env.example) for the authoritative list and meanings:
+See [`.env.example`](../.env.example) for the full list. The ones
+`fly.toml` sets explicitly:
 
-| Variable | Value |
-|---|---|
-| `DB_PATH` | `./data/relay.sqlite` |
-| `UPLOAD_DIR` | `./data/uploads` |
-| `MAX_UPLOAD_BYTES` | `15728640` |
-| `CORS_ORIGIN` | leave blank (see below) |
-| `INBOX_LIMIT_PER_HOUR` | `5` |
-
-Don't set `PORT` — Render injects its own, and `relay-server/index.js`
-already falls back to it correctly.
+| Variable | Value | Why |
+|---|---|---|
+| `DB_PATH` | `/data/relay.sqlite` | Lives on the persistent volume, not the ephemeral container filesystem. |
+| `UPLOAD_DIR` | `/data/uploads` | Same volume, same reason. |
+| `MAX_UPLOAD_BYTES` | `15728640` (15 MB) | Per-photo upload cap. |
+| `CORS_ORIGIN` | `""` (blank) | Blank is safe here because the relay serves the web client from the same origin — see below. |
+| `INBOX_LIMIT_WINDOW_MS` / `INBOX_LIMIT_PER_WINDOW` | `600000` / `200` | Rate limit on `POST /inbox`, the one unauthenticated endpoint. See `docs/THREAT_MODEL.md`. |
 
 `CORS_ORIGIN` can stay blank because the relay serves the web client from
-the same origin (step 3 above), so the web client's own requests are
+the same origin (step 4 above), so the web client's own requests are
 same-origin and don't need CORS at all. It only matters for genuinely
 cross-origin callers — the iOS Shortcuts app isn't a browser and doesn't
 enforce CORS either. The API's own token auth is what actually gates
 access, not CORS.
+
+## Alternative: Render, or any other Node host
+
+Nothing here is Fly-specific except the volume mechanics — any host that
+gives you a persistent disk (or an add-on for one) works the same way: set
+`DB_PATH`/`UPLOAD_DIR` to paths on that disk, `npm run build:web` before
+start, `npm run start:relay` (i.e. `node relay-server/index.js`) to run it.
+Render's free tier specifically does *not* have a persistent disk by
+default (its containers restart clean on every redeploy/sleep cycle),
+which is why it's not the recommended option here — its paid persistent
+disk add-on would work fine, mounted at the same paths.

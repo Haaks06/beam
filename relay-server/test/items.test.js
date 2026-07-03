@@ -106,6 +106,15 @@ test('rejects an unsupported file type', async () => {
     .expect(400);
 });
 
+test('rejects a file whose real bytes are not an image, even if it claims an allowed image Content-Type', async () => {
+  const token = await pairedToken();
+  await request(app)
+    .post('/items/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .attach('file', Buffer.from('<script>alert(1)</script>'), { filename: 'spoofed.png', contentType: 'image/png' })
+    .expect(400);
+});
+
 test('items posted in one inbox are invisible to another inbox', async () => {
   const tokenA = await pairedToken('inbox A');
   const otherDeviceInA = await addDeviceToInbox(tokenA, 'inbox A, second device');

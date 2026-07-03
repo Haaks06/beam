@@ -2,7 +2,7 @@
 // Runs in the service worker, which has no access to localStorage, so the
 // pairing token/relay URL are read from IndexedDB (written by src/app.js).
 
-const DB_NAME = 'share-to-pc';
+const DB_NAME = 'beam';
 const STORE_NAME = 'config';
 
 function openDb() {

@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const express = require('express');
 const db = require('../db');
 const { requireToken } = require('../auth');
-const { upload, UPLOAD_DIR } = require('../lib/upload');
+const { upload, UPLOAD_DIR, ALLOWED_MIME_EXT } = require('../lib/upload');
+const { sniffImageMime } = require('../lib/sniffImageType');
 const sse = require('../lib/sse');
 
 const router = express.Router();
@@ -58,6 +59,22 @@ router.post('/link', (req, res) => {
 router.post('/photo', upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'file is required' });
+  }
+
+  // multer's fileFilter (see lib/upload.js) only ever saw the client's
+  // self-reported Content-Type header, which is trivial to spoof -- upload
+  // anything, claim "image/png". This reads the real bytes just written to
+  // disk and rejects anything whose actual magic number isn't one of the
+  // allowed image formats, regardless of what the client claimed.
+  const filePath = path.join(UPLOAD_DIR, req.file.filename);
+  const head = Buffer.alloc(16);
+  const fd = fs.openSync(filePath, 'r');
+  fs.readSync(fd, head, 0, 16, 0);
+  fs.closeSync(fd);
+  const actualMime = sniffImageMime(head);
+  if (!actualMime || !ALLOWED_MIME_EXT[actualMime]) {
+    fs.unlinkSync(filePath);
+    return res.status(400).json({ error: 'file content does not match an allowed image type' });
   }
 
   const createdAt = Date.now();

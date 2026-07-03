@@ -1,11 +1,31 @@
 # Beam
 
 Beam a link or photo from your phone (iOS/Android) or any browser and have
-it land on your Windows PC in real time — over the internet, not just your
-home Wi-Fi. Pairing is exactly two devices at a time, and a pairing only
-lasts 2 minutes: once your phone and PC are paired, you get a 2-minute
-window to send/receive, then the relay forgets everything it was holding
-(items + uploaded files) and both devices need to re-pair for another go.
+it land on your PC in real time — over the internet, not just your home
+Wi-Fi. Pairing is exactly two devices at a time, and a pairing only lasts
+2 minutes: once your phone and PC are paired, you get a 2-minute window to
+send/receive, then the relay forgets everything it was holding (items +
+uploaded files) and both devices need to re-pair for another go.
+
+## Download
+
+- **Windows app**: [Download Beam for Windows](https://github.com/Haaks06/beam/releases/latest/download/Beam-Setup-Windows.exe)
+  — always the latest release. Windows will show a blue "Windows protected
+  your PC" screen the first time you run it, since the installer isn't
+  code-signed — click **More info** → **Run anyway**. See
+  ["The installer is unsigned"](#the-installer-is-unsigned--what-that-means-for-people-downloading-it)
+  below for why, and why that warning is expected here.
+- **Chrome extension**: not yet published to the Chrome Web Store. Until
+  then, load it yourself: `chrome://extensions` → enable **Developer
+  mode** → **Load unpacked** → select this repo's `chrome-extension/`
+  folder.
+- **Any other browser/phone**: just open
+  [beam-wckn2w.fly.dev](https://beam-wckn2w.fly.dev) — it's a full PWA and
+  works with no install at all (Android can also install it and register
+  it as a native Share Sheet target).
+
+These are the only official builds of Beam. Anything claiming to be Beam
+from another source isn't from this project.
 
 ## How it works
 
@@ -75,16 +95,22 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 9. `npm run dev:desktop` — repeat steps 5–7 and confirm the tray app's window shows the item live, shows a Windows notification, and saves it to `Documents\Beam\` / `Pictures\Beam\`.
 10. Run `ngrok http 3000`, point a real Android phone's browser at the ngrok HTTPS URL, install the PWA, pair via QR, then share a real link/photo from Chrome/Photos and confirm it reaches the desktop app — including with Wi-Fi off (cellular only), to prove this isn't LAN-limited.
 11. Repeat against the iOS Shortcut (see `ios-shortcut/README.md`) using the same ngrok URL.
-12. Only after all of the above pass, deploy to Render (below) and re-pair everything against the production URL.
+12. Only after all of the above pass, deploy to Fly.io (below) and re-pair everything against the production URL.
 
-## Deployment: Render (recommended, free tier, easiest)
+## Deployment: Fly.io (recommended — this is what beam-wckn2w.fly.dev runs)
 
-The fastest way to get a real, shareable HTTPS URL — no server to manage,
-no port-forwarding on your home router. Full instructions, including an
-important warning about Render's free-tier disk being ephemeral, are in
-[`docs/HOSTING.md`](docs/HOSTING.md). Short version: push this repo to
-GitHub, create a Render Blueprint pointed at it, and Render reads
-[`render.yaml`](render.yaml) automatically.
+A real, shareable HTTPS URL with a persistent volume (so pairings survive
+restarts/redeploys instead of being wiped), on Fly's free/hobby tier. Full
+instructions are in [`docs/HOSTING.md`](docs/HOSTING.md). Short version:
+
+```bash
+flyctl launch      # first time only — creates the app + fly.toml
+flyctl volumes create beam_data --size 1   # persistent volume for the DB + uploads
+flyctl deploy
+```
+
+`fly.toml` in this repo already has the right env vars, mount, and health
+check wired up.
 
 ## Deployment: self-hosted (persistent, more setup)
 
@@ -97,21 +123,21 @@ pairing tokens must never travel over plain HTTP).
    your web client's real origin).
 2. Run it under `systemd` so it survives reboots:
    ```ini
-   # /etc/systemd/system/share-to-pc.service
+   # /etc/systemd/system/beam.service
    [Unit]
-   Description=Share to PC relay
+   Description=Beam relay
    After=network.target
 
    [Service]
-   WorkingDirectory=/opt/share-to-pc/relay-server
+   WorkingDirectory=/opt/beam/relay-server
    ExecStart=/usr/bin/node index.js
    Restart=on-failure
-   EnvironmentFile=/opt/share-to-pc/relay-server/.env
+   EnvironmentFile=/opt/beam/relay-server/.env
 
    [Install]
    WantedBy=multi-user.target
    ```
-   Then `systemctl enable --now share-to-pc`.
+   Then `systemctl enable --now beam`.
 3. Point Caddy at it for HTTPS termination:
    ```
    your-domain.example.com {
@@ -151,9 +177,15 @@ before running it, rather than trusting a certificate.
   `lib/sessionCleanup.js` sweeps expired pairings every few seconds,
   deleting their devices, items, and uploaded files, so both tokens 401 on
   their very next request.
-- Uploaded files are restricted by MIME type and size, and stored under
+- Uploaded files are restricted by MIME type and size, stored under
   server-generated filenames (never the client-supplied name) to avoid path
-  traversal.
+  traversal, and the actual bytes are checked against each allowed image
+  format's real magic number after upload — a spoofed `Content-Type` header
+  claiming to be an image doesn't get a file accepted on its word alone.
+- `POST /inbox` (mass inbox creation) and `/pair/*` (pairing attempts) are
+  both rate-limited per IP, with the read-only status-polling route on its
+  own generous limit separate from the actual pairing mutations so normal
+  use never trips it.
 - The `/events` SSE endpoint takes its token as a query parameter (browsers'
   `EventSource` can't set custom headers) — documented tradeoff, mitigated
   by requiring HTTPS in deployment, and by the token becoming worthless the

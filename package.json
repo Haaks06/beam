@@ -1,8 +1,8 @@
 {
-  "name": "share-to-pc",
+  "name": "beam",
   "private": true,
-  "version": "0.10.0",
-  "description": "Share links and photos from any device to your PC",
+  "version": "0.11.0",
+  "description": "Beam a link or photo between two devices, ephemerally, in a couple minutes",
   "workspaces": [
     "relay-server",
     "desktop-app",
