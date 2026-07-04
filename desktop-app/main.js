@@ -203,13 +203,16 @@ function sendPendingClipboard() {
 // the connection well before this ever fires; this is only a backstop.
 const HIDDEN_RELOAD_THRESHOLD_MS = 3 * 60 * 1000;
 
-// Matches web-client's showOnly() section names. The landing screen is a
-// single button and doesn't need the same vertical space as the connect
-// screen (QR code + code field + camera-scan button), so the window starts
-// small and only grows once there's actually more to show.
+// Matches web-client's showOnly() section names. The landing screen needs
+// less vertical space than the connect screen (QR code + code field +
+// camera-scan button), so the window starts smaller and only grows once
+// there's actually more to show. Each height is measured against the real
+// rendered content (not guessed), including the status line + version
+// footer every screen ends with -- a taller-than-content window here is
+// exactly what shows up as dead space before that footer.
 const STATE_SIZES = {
-  start: { width: 420, height: 260 },
-  invite: { width: 420, height: 720 },
+  start: { width: 420, height: 350 },
+  invite: { width: 420, height: 620 },
   scan: { width: 420, height: 640 },
   active: { width: 420, height: 640 },
   ended: { width: 420, height: 320 },

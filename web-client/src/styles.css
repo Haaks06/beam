@@ -239,6 +239,17 @@ h1 {
 /* -- layout --------------------------------------------------------------- */
 
 section { margin-bottom: 16px; }
+
+/* Connect -> QR/pairing -> active -> ended was four screens that just hard-
+   cut into and out of existence (showOnly() only ever toggles display).
+   Applying the same reveal to each top-level screen -- restarting
+   automatically every time one goes from display:none back to block/flex,
+   standard browser behavior for an animation on a newly-laid-out element --
+   makes the whole sequence read as one continuous flow instead of four
+   separately-built screens, without touching showOnly() itself. */
+#start-section, #invite-section, #scan-section, #ended-section, #app-shell {
+  animation: reveal 0.4s var(--ease-out-expo) both;
+}
 .section-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -731,6 +742,24 @@ button.link:hover { color: var(--fg); background: none; }
   font-family: var(--font-display);
   letter-spacing: 0.01em;
 }
+
+/* Quiet, mono/uppercase scaffolding under the one landing action -- same
+   typographic register as .section-title elsewhere, so the screen reads
+   as designed rather than a single button floating in empty space, without
+   turning a one-purpose utility screen into a marketing pitch. */
+.start-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+.start-step-sep { color: var(--line-strong); }
 
 /* -- "or send a link/text instead": was a barely-visible underlined text
    link sitting below a much bigger photo drop zone — easy to miss entirely.

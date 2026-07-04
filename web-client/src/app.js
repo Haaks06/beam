@@ -131,7 +131,7 @@ function setP2pIndicator(mode) {
     p2pIndicatorEl.textContent = sameNetwork ? 'Direct (same network)' : 'Direct';
     p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
   } else if (mode === 'relayed') {
-    p2pIndicatorEl.textContent = 'Relayed (encrypted)';
+    p2pIndicatorEl.textContent = 'Encrypted';
     p2pIndicatorEl.title = "Couldn't connect directly — going through the relay, still end-to-end encrypted";
   } else {
     p2pIndicatorEl.textContent = 'Connecting…';
@@ -452,7 +452,16 @@ function refreshState() {
   }
   if (!token) return enterStartState();
   if (expiresAt && expiresAt > Date.now()) return enterActiveState();
-  if (expiresAt && expiresAt <= Date.now()) return enterEndedState();
+  if (expiresAt && expiresAt <= Date.now()) {
+    // A session that already ended before this load ever saw it live (the
+    // app was fully closed/killed mid-session, or the machine slept through
+    // the whole 2-minute window) shouldn't greet a fresh launch with a
+    // stale "it ended" dead-end -- that screen is for watching a session
+    // end while looking at it, not a cold-boot state. Clear silently and
+    // land on Connect instead, same as never having paired at all.
+    clearConfig();
+    return enterStartState();
+  }
   // Token exists but no expiresAt yet: this device is the one waiting to be
   // joined — re-mint a fresh code rather than trying to recover a stale one.
   return enterInviteState();
@@ -462,7 +471,15 @@ function refreshState() {
 // which enterInviteState() shows as a QR alongside a code-entry field and
 // the camera scanner — so it never matters which device actually "started"
 // it, whichever side completes the pairing first wins.
-connectBtn.addEventListener('click', async () => {
+//
+// Extracted into its own function (rather than triggering it by simulating
+// a click on connectBtn) so the desktop app's "Beam this file" and
+// clipboard-send entry points (see window.beamNative.onQueuedFile /
+// onQueuedText below) can call it directly and land on a ready QR
+// unconditionally — a click-simulation depended on the start screen
+// already being the visible one at that exact moment, which isn't
+// guaranteed and was silently doing nothing when it wasn't.
+async function startNewPairing() {
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
   connectBtn.classList.add('sending');
   connectBtn.disabled = true;
@@ -484,7 +501,9 @@ connectBtn.addEventListener('click', async () => {
     connectBtn.classList.remove('sending');
     connectBtn.disabled = false;
   }
-});
+}
+
+connectBtn.addEventListener('click', startNewPairing);
 
 if (showAdvancedBtn && advancedSection) {
   showAdvancedBtn.addEventListener('click', () => {
@@ -1241,9 +1260,11 @@ document.getElementById('send-link-btn').addEventListener('click', () => {
 
 // desktop-app-exclusive: the tray menu's "Send clipboard now" (see
 // desktop-app/main.js's clipboard watcher) hands over whatever text/link
-// was just copied. Same active-vs-queued split as onQueuedFile above --
-// send now if already paired, otherwise queue it for enterActiveState()'s
-// auto-send check once a device actually pairs.
+// was just copied. Clicking "Send clipboard now" is already a clear,
+// deliberate signal to send -- so this skips straight to a ready QR
+// (startNewPairing(), not a screen the user has to act on first)
+// regardless of whatever screen happens to be showing, unless a pairing
+// is already active, in which case it just sends immediately.
 let queuedTextAutoSend = null;
 window.beamNative?.onQueuedText?.((text) => {
   const linkInput = document.getElementById('link-url');
@@ -1256,8 +1277,8 @@ window.beamNative?.onQueuedText?.((text) => {
     sendLinkText(text);
   } else {
     queuedTextAutoSend = text;
-    setStatus(`Clipboard queued — connect a device to send it`, 'info');
-    if (startSection.style.display === 'block') connectBtn.click();
+    setStatus(`Clipboard queued — pair a device to send it`, 'info');
+    startNewPairing();
   }
 });
 
@@ -1575,10 +1596,11 @@ sendFileBtn?.addEventListener('click', sendSelectedFile);
 // no filesystem access of its own. Routed to whichever existing send
 // pipeline actually accepts it -- an image through the same path the photo
 // drop-zone uses, everything else through the generic file path -- rather
-// than a third upload pipeline of its own. If a pairing is already active,
-// send it immediately; otherwise queue it and fall through to the same
-// auto-send check enterActiveState() runs once pairing completes, exactly
-// like a file chosen by hand would have to wait for a device to pair anyway.
+// than a third upload pipeline of its own. Right-clicking a file and
+// choosing "Beam this file" is already a clear, deliberate signal to send
+// it -- so this skips straight to a ready QR (startNewPairing(), not a
+// screen the user has to act on first) unless a pairing is already
+// active, in which case it just sends immediately.
 let queuedFileAutoSend = null; // 'photo' | 'file' | null
 window.beamNative?.onQueuedFile?.(({ name, mimeType, dataBase64 }) => {
   const bytes = base64ToBuf(dataBase64);
@@ -1601,8 +1623,8 @@ window.beamNative?.onQueuedFile?.(({ name, mimeType, dataBase64 }) => {
     isPhoto ? sendSelectedPhoto() : sendSelectedFile();
   } else {
     queuedFileAutoSend = isPhoto ? 'photo' : 'file';
-    setStatus(`"${file.name}" queued — connect a device to send it`, 'info');
-    if (startSection.style.display === 'block') connectBtn.click();
+    setStatus(`"${file.name}" queued — pair a device to send it`, 'info');
+    startNewPairing();
   }
 });
 
