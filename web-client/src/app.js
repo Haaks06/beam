@@ -1053,9 +1053,18 @@ function noteSseActivity() {
 // window.beamNative.onResumeCheck near the bottom of this file) so a stale
 // connection gets caught immediately when the user actually looks at the
 // screen again, not just whenever the next periodic tick happens to land.
+//
+// Also reconnects when eventSource is already null (not just stale) — found
+// by testing the desktop app's actual close-to-tray path: Electron's native
+// window close (even though main.js's 'close' handler vetoes it and hides
+// instead of quitting) still runs Chromium's page-close lifecycle first,
+// which aborts the in-flight EventSource and its own scheduled backoff
+// retry never gets to run while the window sits hidden. Without this, a
+// pairing that only sees this happen once needs a full quit/relaunch to
+// ever reconnect, since every future call here was silently a no-op against
+// a connection that had already gone away.
 function checkSseHealth() {
-  if (!eventSource) return;
-  if (Date.now() - lastSseActivityAt > SSE_STALE_MS) {
+  if (!eventSource || Date.now() - lastSseActivityAt > SSE_STALE_MS) {
     connectReceivedFeed();
   }
 }
