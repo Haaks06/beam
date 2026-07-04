@@ -1,10 +1,25 @@
+const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor, shell } = require('electron');
+const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor, shell, globalShortcut } = require('electron');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
 // but the product Electron reports to Windows should be the real product name.
 app.setName('Beam');
+
+// This app already auto-launches at login (see setLoginItemSettings below),
+// so a second launch is the common case, not the exception -- Windows
+// Explorer's "Beam this file" context menu (build/installer.nsh) spawns
+// exactly that: `beam.exe --send "path"` while the real tray instance is
+// already running. Without this lock, that would open a second, useless
+// tray icon instead of handing the file to the instance already paired (or
+// pairing). The losing instance must stop here, before any of the
+// tray/window setup below runs.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+  return;
+}
 
 // Electron shows a default File/Edit/View/Window/Help menu bar unless told
 // not to — there's nothing in that menu this app uses (no File > Open, no
@@ -31,10 +46,152 @@ function looksLikeLink(value) {
 }
 
 let tray;
+let trayHandle;
 let mainWindow;
 let resizeTimer;
 let hiddenSince = null;
 let lastReceivedLink = null;
+
+// -- Windows Explorer "Beam this file" (build/installer.nsh registers the
+// context menu entry that launches `Beam.exe --send "path"") -----------
+
+const MIME_BY_EXT = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.zip': 'application/zip',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+};
+
+// The registered Explorer command is exactly `"Beam.exe" --send "%1"` (see
+// build/installer.nsh), so the file path is always the last argument --
+// safer than assuming it's strictly the element right after '--send'.
+// Electron's own dev-mode argv handling (running unpackaged via `electron
+// .`) has been observed injecting its own flags (e.g.
+// --allow-file-access-from-files) between the two, which breaks a strict
+// adjacency check; the path still reliably lands last either way.
+function extractSendPath(argv) {
+  const idx = argv.indexOf('--send');
+  return idx !== -1 ? argv[argv.length - 1] : null;
+}
+
+// Set when a file arrives (via --send or the clipboard tray menu) before
+// the window has finished its initial load -- flushed by the
+// did-finish-load handler in createMainWindow() below, since sending it
+// any earlier would race window.beamNative.onQueuedFile not being wired up
+// in the page yet.
+let pendingFilePayload = null;
+
+function deliverQueuedFile(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    // Shouldn't normally happen (the window is only ever hidden, never
+    // destroyed, until a real quit ends the whole process) -- recreating it
+    // here is cheap insurance against relying on that invariant forever.
+    pendingFilePayload = payload;
+    createMainWindow();
+    return;
+  }
+  if (!mainWindow.webContents.isLoadingMainFrame()) {
+    mainWindow.webContents.send('queued-file', payload);
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    pendingFilePayload = payload;
+  }
+}
+
+function queueFileToSend(filePath) {
+  fs.readFile(filePath, (err, data) => {
+    if (err) return console.error('[send] failed to read', filePath, err);
+    deliverQueuedFile({
+      name: path.basename(filePath),
+      mimeType: MIME_BY_EXT[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      dataBase64: data.toString('base64'),
+    });
+  });
+}
+
+// A second launch (e.g. Explorer's context menu while the tray instance is
+// already running) hands its argv here instead of opening a second window
+// -- see the single-instance lock above.
+app.on('second-instance', (event, argv) => {
+  const filePath = extractSendPath(argv);
+  if (filePath) {
+    queueFileToSend(filePath);
+  } else if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createMainWindow();
+  }
+});
+
+// -- Clipboard watching (one-click send) ---------------------------------
+// Polls rather than something event-driven since Electron's clipboard
+// module has no change-notification API of its own on Windows. 1.2s is
+// frequent enough that "copy, then click Beam" feels immediate without
+// noticeably burning CPU for something this cheap to read.
+const CLIPBOARD_POLL_MS = 1200;
+let lastSeenClipboardText = '';
+let lastSeenClipboardImageDataUrl = null;
+let pendingClipboardSend = null; // { kind: 'text', text } | { kind: 'image', dataBase64 }
+
+// Called right after this app's own clipboard.writeText (see the
+// 'item-received' handler below, which copies a just-*received* link so
+// it's ready to paste) so the watcher's next poll doesn't mistake that for
+// something the user just copied themselves and wants to *send*.
+function noteOwnClipboardWrite(text) {
+  lastSeenClipboardText = text;
+}
+
+function startClipboardWatcher(onReadyChange) {
+  lastSeenClipboardText = clipboard.readText();
+  const initialImage = clipboard.readImage();
+  lastSeenClipboardImageDataUrl = initialImage.isEmpty() ? null : initialImage.toDataURL();
+
+  setInterval(() => {
+    // Images take priority over text: copying an image from most apps
+    // (browsers, Explorer thumbnails, editors) also populates a text/HTML
+    // clipboard format as a side effect, which would otherwise be
+    // misdetected as "new text to send" on the very same poll.
+    const image = clipboard.readImage();
+    const imageDataUrl = image.isEmpty() ? null : image.toDataURL();
+    if (imageDataUrl && imageDataUrl !== lastSeenClipboardImageDataUrl) {
+      lastSeenClipboardImageDataUrl = imageDataUrl;
+      lastSeenClipboardText = clipboard.readText();
+      pendingClipboardSend = { kind: 'image', dataBase64: image.toPNG().toString('base64') };
+      onReadyChange(true);
+      return;
+    }
+    if (!imageDataUrl) lastSeenClipboardImageDataUrl = null;
+
+    const text = clipboard.readText();
+    if (text && text !== lastSeenClipboardText) {
+      lastSeenClipboardText = text;
+      pendingClipboardSend = { kind: 'text', text };
+      onReadyChange(true);
+    }
+  }, CLIPBOARD_POLL_MS);
+}
+
+function sendPendingClipboard() {
+  if (!pendingClipboardSend) return;
+  const item = pendingClipboardSend;
+  pendingClipboardSend = null;
+  if (item.kind === 'text') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('queued-text', item.text);
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  } else {
+    deliverQueuedFile({ name: `clipboard-${Date.now()}.png`, mimeType: 'image/png', dataBase64: item.dataBase64 });
+  }
+}
 
 // Defense in depth, on top of the real fix (the exponential-backoff +
 // staleness watchdog in web-client/src/app.js, which is what actually
@@ -92,7 +249,11 @@ app.on('before-quit', () => {
 
 function notify(title, body) {
   if (Notification.isSupported()) {
-    new Notification({ title, body }).show();
+    // Without an explicit icon, Windows falls back to a generic Electron
+    // icon in the toast -- the one place besides the taskbar this app's
+    // brand mark shows up outside its own window, so it's worth setting
+    // deliberately rather than leaving it to that default.
+    new Notification({ title, body, icon: ICON_PATH }).show();
   }
 }
 
@@ -111,6 +272,18 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
+      // Chrome/Chromium escalates timer throttling the longer a page stays
+      // hidden -- by several minutes in, a background page's setInterval/
+      // setTimeout can be capped to roughly once a minute ("intensive
+      // throttling"). This app lives hidden in the tray for exactly that
+      // long as its normal resting state, and both the SSE staleness
+      // watchdog and the reconnect backoff timer in web-client/src/app.js
+      // depend on firing on their normal schedule the whole time it's
+      // hidden, not just for the first few minutes. Without this, "reliable
+      // while minimized" would start silently degrading back toward
+      // browser-tab behavior right around the point a 20+ minute background
+      // session is meant to prove it doesn't.
+      backgroundThrottling: false,
     },
   });
   // Belt and suspenders alongside the global Menu.setApplicationMenu(null)
@@ -124,6 +297,13 @@ function createMainWindow() {
   // lives at /app (see relay-server/index.js's routing).
   mainWindow.loadURL(`${RELAY_URL}/app`);
   mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (pendingFilePayload) {
+      const payload = pendingFilePayload;
+      pendingFilePayload = null;
+      deliverQueuedFile(payload);
+    }
+  });
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
@@ -153,6 +333,9 @@ function createMainWindow() {
       mainWindow.webContents.send('resume-check');
     }
     hiddenSince = null;
+    // The user is looking at the window again -- whatever the received
+    // indicator was flagging has been seen now.
+    trayHandle?.setReceivedIndicator(false);
   });
 }
 
@@ -175,15 +358,23 @@ app.whenReady().then(() => {
   app.on('window-all-closed', () => {});
 
   // Keeps Beam "always on" — relaunches with Windows so it doesn't need to
-  // be manually started each session. Skipped in dev (electron .) since
-  // that would register the electron.exe shell itself as a login item.
-  if (app.isPackaged) {
+  // be manually started each session, on by default since that's what a
+  // tray utility like this is expected to do. Skipped in dev (electron .)
+  // since that would register the electron.exe shell itself as a login
+  // item. Only forced on the very first run: Windows already remembers
+  // whatever setLoginItemSettings last set at the OS level, so doing this
+  // unconditionally on every launch would silently re-enable it the moment
+  // someone turns it off via the tray's own toggle below.
+  const autoLaunchMarker = path.join(app.getPath('userData'), 'autolaunch-initialized');
+  if (app.isPackaged && !fs.existsSync(autoLaunchMarker)) {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+    fs.mkdirSync(path.dirname(autoLaunchMarker), { recursive: true });
+    fs.writeFileSync(autoLaunchMarker, '');
   }
 
   ensureFolders();
 
-  const trayHandle = createTray({
+  trayHandle = createTray({
     iconPath: ICON_PATH,
     onLeftClick: toggleMainWindow,
     onQuit: () => {
@@ -195,10 +386,45 @@ app.whenReady().then(() => {
     },
     onOpenLinksFolder: () => shell.openPath(LINKS_DIR),
     onOpenPhotosFolder: () => shell.openPath(PHOTOS_DIR),
+    onSendClipboard: () => {
+      sendPendingClipboard();
+      trayHandle.setClipboardReady(false);
+    },
+    onToggleAutoLaunch: (enabled) => {
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });
+    },
+    autoLaunchEnabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false,
   });
   tray = trayHandle.tray;
 
+  startClipboardWatcher((ready) => trayHandle.setClipboardReady(ready));
+
   createMainWindow();
+
+  // The app's own first launch can be `Beam.exe --send "path"` too -- e.g.
+  // right-clicking a file before Beam has ever been auto-launched this
+  // session (auto-launch is on by default, but a user can turn it off --
+  // see tray.js's toggle).
+  const initialSendPath = extractSendPath(process.argv);
+  if (initialSendPath) queueFileToSend(initialSendPath);
+
+  // Global hotkey: brings the window forward rather than firing an
+  // immediate clipboard send. An instant, no-confirmation send bound to a
+  // hotkey is one stray keypress away from beaming whatever happens to be
+  // on the clipboard at that moment (a password, an address, anything) to
+  // whoever's currently paired -- the tray's own "Send clipboard now" (see
+  // startClipboardWatcher above) already covers that action, deliberately
+  // one visible click away instead. Bring-to-front is the same kind of
+  // convenience without that risk, and covers the more common need: Beam
+  // is usually reached for to paste something that just arrived, not to
+  // send something out.
+  const HOTKEY = 'Control+Shift+B';
+  if (!globalShortcut.register(HOTKEY, toggleMainWindow)) {
+    console.error(`[hotkey] failed to register ${HOTKEY} (likely already claimed by another app)`);
+  }
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
+  });
 
   // The other half of the "stale after being idle" fix, for the case the
   // window was actually still visible when the machine slept — 'show'
@@ -233,21 +459,26 @@ app.whenReady().then(() => {
           // this app did before the ephemeral-pairing rewrite dropped it.
           // The whole point of beaming a link over is to use it right away.
           clipboard.writeText(item.content);
+          noteOwnClipboardWrite(item.content);
           lastReceivedLink = item.content;
           trayHandle.setLastLinkAvailable(true);
           notify('Link received — copied to clipboard', item.content);
         } else {
           notify('Text received', item.content);
         }
+        trayHandle.setReceivedIndicator(true);
       } else if (item.type === 'photo') {
         const savedPath = await savePhoto(item, relayUrl, token);
-        notify('Photo received', savedPath);
+        notify('Photo received', `Saved as ${path.basename(savedPath)} in Pictures\\Beam`);
+        trayHandle.setReceivedIndicator(true);
       } else if (item.type === 'file') {
         const savedPath = await saveFile(item, relayUrl, token);
-        notify('File received', savedPath);
+        notify('File received', `Saved as ${path.basename(savedPath)} in Documents\\Beam Files`);
+        trayHandle.setReceivedIndicator(true);
       } else if (item.type === 'voice') {
         const savedPath = await saveVoiceMemo(item, relayUrl, token);
-        notify('Voice memo received', savedPath);
+        notify('Voice memo received', `Saved as ${path.basename(savedPath)} in Music\\Beam`);
+        trayHandle.setReceivedIndicator(true);
       }
     } catch (err) {
       console.error('failed to save received item', err);

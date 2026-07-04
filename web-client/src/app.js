@@ -340,6 +340,23 @@ function enterActiveState() {
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
+
+  // A file or clipboard text queued before this pairing completed (see
+  // window.beamNative.onQueuedFile / onQueuedText above) gets sent now
+  // that there's actually somewhere to send it to.
+  if (queuedFileAutoSend) {
+    const kind = queuedFileAutoSend;
+    queuedFileAutoSend = null;
+    activateTab('send');
+    if (kind === 'photo') sendSelectedPhoto();
+    else sendSelectedFile();
+  }
+  if (queuedTextAutoSend) {
+    const text = queuedTextAutoSend;
+    queuedTextAutoSend = null;
+    activateTab('send');
+    sendLinkText(text);
+  }
 }
 
 async function enterInviteState() {
@@ -1169,9 +1186,11 @@ document.addEventListener('visibilitychange', () => {
 });
 window.beamNative?.onResumeCheck?.(() => checkSseHealth());
 
-document.getElementById('send-link-btn').addEventListener('click', async () => {
+// Extracted so a clipboard change "Beamed" from the desktop app's tray menu
+// (see window.beamNative.onQueuedText below) can trigger this exact path
+// instead of duplicating it.
+async function sendLinkText(url) {
   const { relayUrl, token } = loadConfig();
-  const url = document.getElementById('link-url').value.trim();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!url) return setStatus('Enter something to send.', 'error');
   const btn = document.getElementById('send-link-btn');
@@ -1213,6 +1232,32 @@ document.getElementById('send-link-btn').addEventListener('click', async () => {
   } finally {
     btn.classList.remove('sending');
     btn.disabled = false;
+  }
+}
+
+document.getElementById('send-link-btn').addEventListener('click', () => {
+  sendLinkText(document.getElementById('link-url').value.trim());
+});
+
+// desktop-app-exclusive: the tray menu's "Send clipboard now" (see
+// desktop-app/main.js's clipboard watcher) hands over whatever text/link
+// was just copied. Same active-vs-queued split as onQueuedFile above --
+// send now if already paired, otherwise queue it for enterActiveState()'s
+// auto-send check once a device actually pairs.
+let queuedTextAutoSend = null;
+window.beamNative?.onQueuedText?.((text) => {
+  const linkInput = document.getElementById('link-url');
+  linkInput.value = text;
+  if (textSection) textSection.style.display = 'block';
+
+  const { expiresAt } = loadConfig();
+  if (expiresAt && expiresAt > Date.now() && appShell.style.display === 'block') {
+    activateTab('send');
+    sendLinkText(text);
+  } else {
+    queuedTextAutoSend = text;
+    setStatus(`Clipboard queued — connect a device to send it`, 'info');
+    if (startSection.style.display === 'block') connectBtn.click();
   }
 });
 
@@ -1297,7 +1342,10 @@ document.addEventListener('paste', (event) => {
   }
 });
 
-sendPhotoBtn.addEventListener('click', async () => {
+// Extracted for the same reason sendSelectedFile() is below: a photo
+// queued by the desktop app's "Beam this file" Explorer context menu needs
+// to trigger this exact path, not a duplicate of it.
+async function sendSelectedPhoto() {
   const { relayUrl, token } = loadConfig();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!selectedPhotoFile) return setStatus('Choose a photo to send.', 'error');
@@ -1356,7 +1404,9 @@ sendPhotoBtn.addEventListener('click', async () => {
     sendPhotoBtn.classList.remove('sending');
     sendPhotoBtn.disabled = !selectedPhotoFile;
   }
-});
+}
+
+sendPhotoBtn.addEventListener('click', sendSelectedPhoto);
 
 const showTextBtn = document.getElementById('show-text-btn');
 const textSection = document.getElementById('text-section');
@@ -1368,22 +1418,29 @@ if (showTextBtn && textSection) {
   });
 }
 
-// -- UI-only "paid plan" gate for file/voice sending ---------------------
-// No real billing exists yet -- this only withholds the send-file/
-// send-voice UI behind a lock icon until unlocked, purely client-side.
-// relay-server's file/voice item-type support is untouched and fully
-// functional; a request straight to POST /items/file or /items/voice
-// still works exactly as before regardless of this flag. Unlocking is a
-// single global switch (not per-feature) via a debug gesture: tapping
-// either feature's lock icon UNLOCK_TAP_COUNT times within
-// UNLOCK_TAP_WINDOW_MS, persisted in localStorage so it doesn't need
-// repeating on this device once found.
+// -- Platform gate for file/voice sending --------------------------------
+// File and voice-memo sending are a real desktop-app-exclusive capability
+// (see README's "why download the desktop app" pitch), not a payment tier
+// -- there's no billing here and never was. window.beamNative.isDesktopApp
+// only exists inside the packaged Electron app (see desktop-app/preload.js),
+// so that's what decides the *default*: unlocked automatically when this
+// page is running as the real desktop app, locked by default everywhere
+// else (a plain browser tab, a phone). relay-server's file/voice item-type
+// support is untouched and fully functional either way -- a request
+// straight to POST /items/file or /items/voice still works regardless of
+// this flag, same as before.
+//
+// The lock icon's debug/promo override -- tapping it UNLOCK_TAP_COUNT
+// times within UNLOCK_TAP_WINDOW_MS -- stays a universal escape hatch on
+// top of that default, working on any device including a browser tab,
+// persisted in localStorage so it doesn't need repeating on this device
+// once found.
 const PAID_UNLOCK_KEY = 'paidFeaturesUnlocked';
 const UNLOCK_TAP_COUNT = 4;
 const UNLOCK_TAP_WINDOW_MS = 3000;
 
 function isPaidUnlocked() {
-  return localStorage.getItem(PAID_UNLOCK_KEY) === 'true';
+  return !!window.beamNative?.isDesktopApp || localStorage.getItem(PAID_UNLOCK_KEY) === 'true';
 }
 
 const paidGateRefreshers = [];
@@ -1450,7 +1507,11 @@ genericFileInput?.addEventListener('change', () => {
   sendFileBtn.disabled = !selectedGenericFile;
 });
 
-sendFileBtn?.addEventListener('click', async () => {
+// Extracted so a file queued by the desktop app's "Beam this file" Explorer
+// context menu (see window.beamNative.onQueuedFile below) can trigger the
+// exact same send path as clicking the button by hand, instead of
+// duplicating this logic.
+async function sendSelectedFile() {
   const { relayUrl, token } = loadConfig();
   if (!token) return setStatus('Pair this device first.', 'error');
   if (!selectedGenericFile) return setStatus('Choose a file to send.', 'error');
@@ -1503,6 +1564,45 @@ sendFileBtn?.addEventListener('click', async () => {
   } finally {
     sendFileBtn.classList.remove('sending');
     sendFileBtn.disabled = !selectedGenericFile;
+  }
+}
+
+sendFileBtn?.addEventListener('click', sendSelectedFile);
+
+// desktop-app-exclusive: a file "Beamed" via Windows Explorer's right-click
+// context menu (see desktop-app/build/installer.nsh + main.js's --send
+// handling) arrives here as base64 bytes over IPC, since the renderer has
+// no filesystem access of its own. Routed to whichever existing send
+// pipeline actually accepts it -- an image through the same path the photo
+// drop-zone uses, everything else through the generic file path -- rather
+// than a third upload pipeline of its own. If a pairing is already active,
+// send it immediately; otherwise queue it and fall through to the same
+// auto-send check enterActiveState() runs once pairing completes, exactly
+// like a file chosen by hand would have to wait for a device to pair anyway.
+let queuedFileAutoSend = null; // 'photo' | 'file' | null
+window.beamNative?.onQueuedFile?.(({ name, mimeType, dataBase64 }) => {
+  const bytes = base64ToBuf(dataBase64);
+  const file = new File([bytes], name, { type: mimeType || 'application/octet-stream' });
+  const isPhoto = file.type.startsWith('image/');
+
+  if (isPhoto) {
+    setSelectedPhoto(file);
+  } else {
+    selectedGenericFile = file;
+    if (selectedFileNameEl) selectedFileNameEl.textContent = file.name;
+    if (sendFileBtn) sendFileBtn.disabled = false;
+    if (fileSection) fileSection.style.display = 'block';
+    showFileBtn?.classList.remove('locked-toggle');
+  }
+
+  const { expiresAt } = loadConfig();
+  if (expiresAt && expiresAt > Date.now() && appShell.style.display === 'block') {
+    activateTab('send');
+    isPhoto ? sendSelectedPhoto() : sendSelectedFile();
+  } else {
+    queuedFileAutoSend = isPhoto ? 'photo' : 'file';
+    setStatus(`"${file.name}" queued — connect a device to send it`, 'info');
+    if (startSection.style.display === 'block') connectBtn.click();
   }
 });
 

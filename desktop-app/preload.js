@@ -21,4 +21,18 @@ contextBridge.exposeInMainWorld('beamNative', {
   // that recheck happen the instant the window is actually looked at again
   // instead of waiting for the next periodic watchdog tick.
   onResumeCheck: (callback) => ipcRenderer.on('resume-check', () => callback()),
+  // A real, structural reason to prefer the desktop app over the browser
+  // tab (see web-client/src/app.js's file/voice platform gate): lets the
+  // page tell the two apart, since window.beamNative only exists here.
+  isDesktopApp: true,
+  // Windows Explorer's right-click "Beam this file" (see build/installer.nsh
+  // + main.js's --send handling) and the clipboard tray menu's "Send now"
+  // both hand a file to the renderer this way, since the renderer itself
+  // has no filesystem access to read an arbitrary path -- main.js reads the
+  // bytes and forwards them as base64 over IPC instead.
+  onQueuedFile: (callback) => ipcRenderer.on('queued-file', (event, payload) => callback(payload)),
+  // The tray menu's "Send clipboard now" (see main.js's clipboard watcher)
+  // for plain text/link clipboard content -- images go through
+  // onQueuedFile above instead, same as any other photo.
+  onQueuedText: (callback) => ipcRenderer.on('queued-text', (event, text) => callback(text)),
 });

@@ -33,6 +33,14 @@ module.exports = async function () {
       publisherName: 'Beam',
     },
   };
+  // build/installer.nsh's customInstall/customUnInstall macros add and
+  // remove Windows Explorer's "Beam this file" right-click entry --
+  // per-user (perMachine defaults to false already) since this installer
+  // runs unsigned with no admin elevation, matching the HKCU registry keys
+  // that script writes to.
+  const nsis = {
+    include: 'build/installer.nsh',
+  };
 
   if (process.env.AZURE_CODE_SIGNING_ENDPOINT) {
     win.azureSignOptions = {
@@ -47,5 +55,6 @@ module.exports = async function () {
     productName: 'Beam',
     npmRebuild: false,
     win,
+    nsis,
   };
 };
