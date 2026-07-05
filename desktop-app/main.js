@@ -32,8 +32,11 @@ const { createTray } = require('./tray');
 
 // Packaged installs default to the hosted relay so they work with zero
 // setup; process.env.RELAY_URL overrides this for local development
-// (see README.md's "Running locally" section).
-const RELAY_URL = process.env.RELAY_URL || 'https://beam-wckn2w.fly.dev';
+// (see README.md's "Running locally" section). The relay itself now
+// redirects the raw fly.dev address here anyway (see index.js), but an
+// already-branded default means a fresh install never even makes that
+// extra hop.
+const RELAY_URL = process.env.RELAY_URL || 'https://www.beamlot.com';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 
 // Duplicated from web-client/src/app.js's looksLikeLink (same reasoning,

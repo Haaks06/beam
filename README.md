@@ -21,7 +21,7 @@ both devices need to re-pair for another go.
   mode** → **Load unpacked** → select this repo's `chrome-extension/`
   folder.
 - **Any other browser/phone**: just open
-  [beam-wckn2w.fly.dev](https://beam-wckn2w.fly.dev) — it's a full PWA and
+  [www.beamlot.com](https://www.beamlot.com) — it's a full PWA and
   works with no install at all (Android can also install it and register
   it as a native Share Sheet target).
 
@@ -101,7 +101,7 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 13. Repeat against the iOS Shortcut (see `ios-shortcut/README.md`) using the same ngrok URL.
 14. Only after all of the above pass, deploy to Fly.io (below) and re-pair everything against the production URL.
 
-## Deployment: Fly.io (recommended — this is what beam-wckn2w.fly.dev runs)
+## Deployment: Fly.io (recommended — this is what www.beamlot.com runs)
 
 A real, shareable HTTPS URL with a persistent volume (so pairings survive
 restarts/redeploys instead of being wiped), on Fly's free/hobby tier. Full

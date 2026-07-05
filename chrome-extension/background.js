@@ -2,7 +2,7 @@
 // (the same page a phone gets — see relay-server/index.js serving
 // web-client/dist) in a clean, tab-less window. There's no bundled copy of
 // the UI to keep in sync — it's always whatever's actually deployed.
-const RELAY_URL = 'https://beam-wckn2w.fly.dev';
+const RELAY_URL = 'https://www.beamlot.com';
 
 let beamWindowId = null;
 

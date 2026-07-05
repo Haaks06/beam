@@ -39,12 +39,13 @@ for every permission, especially broad ones. Use these:
   used for (grep `background.js` for the only `fetch()` call outside the
   relay's own known origin).
 - **`content_scripts` matching the relay's own origin(s) only**
-  (`beam-wckn2w.fly.dev` / `localhost:3000` for dev) — not a broad
-  permission, scoped to the extension's own popup page, used only to relay
-  a pending share into that page (see `content-bridge.js`'s comment). Update
-  this list if the relay's production domain ever changes (e.g. to
-  beamlot.com) — it must match wherever `background.js`'s `RELAY_URL`
-  actually points, or the context-menu bridge silently stops working.
+  (`www.beamlot.com` / `beam-wckn2w.fly.dev` (redirects there) /
+  `localhost:3000` for dev) — not a broad permission, scoped to the
+  extension's own popup page, used only to relay a pending share into that
+  page (see `content-bridge.js`'s comment). Update this list if the
+  relay's production domain ever changes again — it must match wherever
+  `background.js`'s `RELAY_URL` actually points, or the context-menu
+  bridge silently stops working.
 
 ## Single purpose description (required field)
 
@@ -75,11 +76,10 @@ since it needs to match actual behavior, not just the web app's.
 - [ ] Decide the listing's visibility (public vs. unlisted) and pricing
       (free).
 - [ ] Confirm `RELAY_URL` in `background.js` is pointed at whatever's
-      actually the production relay at submission time — it's currently
-      hardcoded to `https://beam-wckn2w.fly.dev`; if the custom domain
-      (beamlot.com) becomes the canonical relay endpoint instead, update
-      both `background.js` and this file's content-script justification
-      above together.
+      actually the production relay at submission time — currently
+      `https://www.beamlot.com`. If the canonical relay endpoint ever
+      changes again, update both `background.js` and this file's
+      content-script justification above together.
 - [ ] After the first real submission, note the Web Store-assigned
       extension ID somewhere durable — if a future feature ever needs
       page-initiated messaging (`externally_connectable`, the alternative

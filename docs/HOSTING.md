@@ -1,10 +1,12 @@
 # Hosting on Fly.io
 
-This is what `beam-wckn2w.fly.dev` (the production instance this repo's
-README links to) actually runs. Fly's free/hobby tier includes a small
-persistent volume, so pairings and uploaded files survive restarts and
-redeploys instead of being wiped — the main reason this project moved off
-Render's free tier, where the disk is ephemeral.
+This is what `www.beamlot.com` (the production instance this repo's
+README links to — served from the underlying Fly app `beam-wckn2w.fly.dev`,
+which now redirects here, see `PUBLIC_RELAY_URL` in `fly.toml`) actually
+runs. Fly's free/hobby tier includes a small persistent volume, so
+pairings and uploaded files survive restarts and redeploys instead of
+being wiped — the main reason this project moved off Render's free tier,
+where the disk is ephemeral.
 
 ## Setup
 
@@ -38,9 +40,10 @@ Render's free tier, where the disk is ephemeral.
 
 `fly.toml` sets `auto_stop_machines = false` and `min_machines_running = 1`
 — the machine never scales to zero. This matters specifically because
-pairings are already short-lived (2 minutes) by design; a cold start on
-top of that would eat into the pairing window itself, unlike a normal
-always-warm web app where a slow first request is just mildly annoying.
+pairings are already short-lived (5 minutes by default, 2-15 configurable)
+by design; a cold start on top of that would eat into the pairing window
+itself, unlike a normal always-warm web app where a slow first request is
+just mildly annoying.
 
 ## Environment variables
 
@@ -53,6 +56,7 @@ See [`.env.example`](../.env.example) for the full list. The ones
 | `UPLOAD_DIR` | `/data/uploads` | Same volume, same reason. |
 | `MAX_UPLOAD_BYTES` | `15728640` (15 MB) | Per-photo upload cap. |
 | `CORS_ORIGIN` | `""` (blank) | Blank is safe here because the relay serves the web client from the same origin — see below. |
+| `PUBLIC_RELAY_URL` | `https://www.beamlot.com` | The URL every pairing link/QR code points at, and what a request on any other hostname (e.g. the raw `beam-wckn2w.fly.dev` address) gets redirected to — see `relay-server/lib/publicRelayUrl.js`. Set this to your own domain if self-hosting; without it, pairing links fall back to `http://localhost:3000`. |
 | `INBOX_LIMIT_WINDOW_MS` / `INBOX_LIMIT_PER_WINDOW` | `600000` / `200` | Rate limit on `POST /inbox`, the one unauthenticated endpoint. See `docs/THREAT_MODEL.md`. |
 
 `CORS_ORIGIN` can stay blank because the relay serves the web client from

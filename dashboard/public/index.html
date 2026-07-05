@@ -69,7 +69,7 @@
       <h2>Where things run</h2>
       <table>
         <tr><th>Piece</th><th>What it is</th><th>Where</th></tr>
-        <tr><td><b>relay-server</b></td><td>Express + <code>node:sqlite</code> API — the only thing that persists anything, and only for the 2-minute window</td><td>Fly.io, <code>beam-wckn2w.fly.dev</code></td></tr>
+        <tr><td><b>relay-server</b></td><td>Express + <code>node:sqlite</code> API — the only thing that persists anything, and only for the session's configured window</td><td>Fly.io, <code>www.beamlot.com</code></td></tr>
         <tr><td><b>web-client</b></td><td>The actual UI — vanilla JS, no framework, built with Vite and served BY the relay itself</td><td>Same origin as the relay</td></tr>
         <tr><td><b>desktop-app</b></td><td>An Electron shell that just loads the same web-client page — no separate desktop-only UI to keep in sync</td><td>Windows installer, GitHub Releases</td></tr>
       </table>
