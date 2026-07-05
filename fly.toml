@@ -12,6 +12,14 @@ primary_region = "ams"
   UPLOAD_DIR = "/data/uploads"
   MAX_UPLOAD_BYTES = "15728640"
   CORS_ORIGIN = ""
+  # The URL every pairing link/QR code points at (see
+  # relay-server/lib/publicRelayUrl.js) -- fixed here rather than derived
+  # from whatever hostname a request arrives on, which used to leak the
+  # raw fly.dev address into every QR code. TODO once app.beamlot.com's
+  # DNS is live and its cert (already requested via `fly certs add`)
+  # verifies: change this to "https://app.beamlot.com" and redeploy --
+  # that also turns on index.js's fly.dev -> canonical-host redirect.
+  PUBLIC_RELAY_URL = "https://beam-wckn2w.fly.dev"
   # Renamed from INBOX_LIMIT_PER_HOUR during the rate-limit redesign (see
   # relay-server/index.js) -- the old name is silently ignored by the code
   # now, so this stayed unset in production and fell back to the code

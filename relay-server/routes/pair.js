@@ -6,6 +6,7 @@ const db = require('../db');
 const { requireToken } = require('../auth');
 const rateLimitHandler = require('../lib/rateLimitHandler');
 const { clampSessionDuration } = require('../lib/sessionDuration');
+const { PUBLIC_RELAY_URL } = require('../lib/publicRelayUrl');
 
 const router = express.Router();
 
@@ -92,7 +93,7 @@ router.post('/init', mutationLimiter, requireToken, async (req, res) => {
   }
   insertPairing.run(req.device.inbox_id, code, now, now + CODE_TTL_MS);
 
-  const relayUrl = `${req.protocol}://${req.get('host')}`;
+  const relayUrl = PUBLIC_RELAY_URL;
   // A real, openable URL (not bare JSON) so any phone camera can scan it
   // directly into a browser. Path-based (beamsend.com/ABC123) rather than
   // ?relay=&code= — nicer to share/read aloud, and the relay is always

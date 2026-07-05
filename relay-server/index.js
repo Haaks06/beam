@@ -15,18 +15,17 @@ const itemRoutes = require('./routes/items');
 const streamRoutes = require('./routes/stream');
 const signalRoutes = require('./routes/signal');
 const { startSessionCleanup } = require('./lib/sessionCleanup');
+const { PUBLIC_RELAY_URL } = require('./lib/publicRelayUrl');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
 
-// Render (and most PaaS hosts) terminate HTTPS at their edge and forward
-// plain HTTP internally, setting X-Forwarded-Proto to tell us the original
-// scheme. Without this, req.protocol always reports "http" behind such a
-// proxy, so the QR/pairing URL built from it (see routes/pair.js) would
-// point at an insecure http:// URL — which browsers block as mixed content
-// once fetched from the https:// page, surfacing as a generic network
-// error ("Load failed" in Safari) with no obvious cause.
+// Fly (and most PaaS hosts) terminate HTTPS at their edge and forward
+// plain HTTP internally, setting X-Forwarded-Proto/X-Forwarded-Host to
+// tell us the original scheme/host. Needed for req.ip (remoteAddr, see
+// routes/pair.js) and for the redirect below to see the actual hostname
+// the client used, not the proxy's own.
 app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -35,6 +34,27 @@ app.use(
     origin: CORS_ORIGIN.length ? CORS_ORIGIN : true,
   })
 );
+
+// Anyone still landing directly on a non-canonical hostname -- the raw
+// fly.dev address, an old bookmark, an old installed PWA's start_url, a
+// stale doc link -- gets bounced to PUBLIC_RELAY_URL instead of staying
+// there or breaking. Only installed when PUBLIC_RELAY_URL is actually
+// configured (production); local dev/tests never set it, so this never
+// runs there. Scoped to page navigations only, matching the same API path
+// prefixes the catch-all further down excludes -- an already-loaded
+// page's own fetch()/EventSource calls must never be redirected, since a
+// 301 on a POST silently drops its body and would break pairing/sending
+// for anyone still pointed at the old host, and /health must always
+// answer directly or Fly's own health check would see it as down.
+if (process.env.PUBLIC_RELAY_URL) {
+  const canonicalHost = new URL(PUBLIC_RELAY_URL).hostname;
+  app.use((req, res, next) => {
+    if (req.hostname !== canonicalHost && !/^\/(inbox|pair|items|events|health|signal)/.test(req.path)) {
+      return res.redirect(301, `${PUBLIC_RELAY_URL}${req.originalUrl}`);
+    }
+    next();
+  });
+}
 app.use(express.json());
 
 // POST /inbox is the unauthenticated front door now that /pair/init
