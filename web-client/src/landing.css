@@ -30,7 +30,10 @@
   /* -- text -- */
   --fg: #f2eefc;
   --muted: #948dbd;
-  --muted-2: #5d5580;
+  /* Same fix as web-client/src/styles.css's --muted-2 -- was #5d5580,
+     ~3:1 contrast against --bg (below AA). Same hue family, raised to
+     clear 4.5:1. */
+  --muted-2: #7a70ad;
 
   /* -- beam violet scale, sampled from the mark -- */
   --violet-50: #f2d6ff;

@@ -113,6 +113,12 @@
   <div id="app-shell" style="display:none">
     <div id="session-banner">
       <span id="session-timer"></span>
+      <!-- The visible countdown updates every second, which would be
+           unusably noisy for a screen reader if it were the live region
+           itself -- this sr-only span instead gets updated (and
+           announced) about once a minute, not every tick. See app.js's
+           tick(). -->
+      <span id="session-timer-announce" class="sr-only" aria-live="polite"></span>
       <!-- Phase 2a: whether items are currently going peer-to-peer
            (WebRTC data channel) or through the relay (still end-to-end
            encrypted, just not direct) -- see p2p.js. Hidden until a mode
@@ -121,7 +127,7 @@
       <span id="p2p-indicator" class="p2p-indicator" style="display:none"></span>
       <button id="repair-link" class="link">Start over</button>
     </div>
-    <p id="session-warning" style="display:none">Session ending soon — anything not sent will be lost.</p>
+    <p id="session-warning" role="alert" style="display:none">Session ending soon — anything not sent will be lost.</p>
 
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="send">Send</button>
@@ -213,7 +219,7 @@
     <button id="restart-btn" class="primary">Start a new session</button>
   </section>
 
-  <div id="status"></div>
+  <div id="status" role="status" aria-live="polite"></div>
   <div id="version-footer"></div>
 
   <script type="module" src="/src/app.js"></script>

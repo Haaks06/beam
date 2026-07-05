@@ -102,6 +102,7 @@ const pairSuccessOverlay = document.getElementById('pair-success-overlay');
 const appShell = document.getElementById('app-shell');
 const endedSection = document.getElementById('ended-section');
 const sessionTimerEl = document.getElementById('session-timer');
+const sessionTimerAnnounceEl = document.getElementById('session-timer-announce');
 const sessionWarningEl = document.getElementById('session-warning');
 const repairLink = document.getElementById('repair-link');
 const receivedList = document.getElementById('received-list');
@@ -438,6 +439,10 @@ function enterActiveState() {
 
   if (sessionWarningEl) sessionWarningEl.style.display = 'none';
   clearInterval(countdownTimer);
+  // Tracks which minute mark has already been announced so the sr-only
+  // live region below updates about once a minute, not on every tick --
+  // reset fresh each time a session goes active.
+  let lastAnnouncedMinute = null;
   const tick = () => {
     const { expiresAt } = loadConfig();
     const remaining = (expiresAt || 0) - Date.now();
@@ -446,6 +451,16 @@ function enterActiveState() {
       return;
     }
     sessionTimerEl.textContent = `Session ends in ${formatRemaining(remaining)}`;
+    // A screen reader would announce every single tick if #session-timer
+    // itself were the live region -- this separate sr-only span (see
+    // index.html) only changes, and so only gets announced, once per
+    // minute crossed.
+    const minutesRemaining = Math.ceil(remaining / 60000);
+    if (sessionTimerAnnounceEl && minutesRemaining !== lastAnnouncedMinute) {
+      lastAnnouncedMinute = minutesRemaining;
+      sessionTimerAnnounceEl.textContent =
+        minutesRemaining <= 1 ? 'Less than a minute left in this session.' : `${minutesRemaining} minutes left in this session.`;
+    }
     // Anything not sent by this point is genuinely about to be lost -- the
     // relay wipes the session the instant expiresAt passes, no grace period.
     if (sessionWarningEl) {

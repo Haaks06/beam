@@ -30,7 +30,14 @@
   /* -- text -- */
   --fg: #f2eefc;
   --muted: #948dbd;
-  --muted-2: #5d5580;
+  /* Same hue/family as --muted, one step darker -- was #5d5580, which
+     measured ~3:1 against --bg (below AA's ~4.5:1 for normal text at the
+     small sizes this is used at, e.g. .signal, input::placeholder,
+     #version-footer). Raised saturation/lightness just enough to clear
+     4.5:1 (comes out to ~4.6:1) while keeping the same 250°-ish hue as
+     --muted, so it still reads as "the quieter version of --muted" rather
+     than an arbitrarily lightened one-off. */
+  --muted-2: #7a70ad;
 
   /* -- beam violet scale, sampled from the mark -- */
   --violet-50: #f2d6ff;
@@ -129,6 +136,22 @@
 /* -- base --------------------------------------------------------------- */
 
 * { box-sizing: border-box; }
+
+/* Standard visually-hidden-but-accessible pattern -- used for the session
+   countdown's periodic screen-reader announcement (#session-timer-announce
+   in index.html), which needs to exist in the accessibility tree without
+   duplicating the visible "Session ends in 4:37" text on screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 body {
   position: relative;
