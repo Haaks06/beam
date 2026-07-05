@@ -56,5 +56,17 @@ module.exports = async function () {
     npmRebuild: false,
     win,
     nsis,
+    // electron-updater's feed -- GitHub Releases works as-is only while
+    // this repo stays public (its provider assumes anonymous, unauthenticated
+    // access to the releases API; a shipped app can't safely embed a token
+    // to read a private repo's releases, since anyone could extract it from
+    // the binary). If the repo ever goes private, switch this to the
+    // generic HTTP provider pointed at a self-hosted update feed instead of
+    // just adding a token here.
+    publish: {
+      provider: 'github',
+      owner: 'Haaks06',
+      repo: 'beam',
+    },
   };
 };

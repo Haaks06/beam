@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { app, BrowserWindow, Notification, ipcMain, Menu, clipboard, powerMonitor, shell, globalShortcut } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 // Must run before any local require that touches app.getPath('userData') —
 // the npm package name stays "desktop-app" (matches the workspace folder),
@@ -250,6 +251,15 @@ app.on('before-quit', () => {
   app.isQuitting = true;
 });
 
+// Shared by the tray menu's checkbox and the in-app Settings tab's toggle
+// (see preload.js's beamNative.setAutoLaunch) -- both need to end up at the
+// same OS-level call and keep the other surface's UI in sync, rather than
+// each maintaining its own notion of the current state.
+function setAutoLaunch(enabled) {
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });
+  trayHandle?.setAutoLaunch(enabled);
+}
+
 function notify(title, body) {
   if (Notification.isSupported()) {
     // Without an explicit icon, Windows falls back to a generic Electron
@@ -375,6 +385,17 @@ app.whenReady().then(() => {
     fs.writeFileSync(autoLaunchMarker, '');
   }
 
+  // Packaged installs check the update feed on launch; electron-updater
+  // silently no-ops in dev. Uses the GitHub Releases provider (see
+  // package.json's build.publish) since this repo is public -- errors are
+  // logged, not surfaced to the user, since a failed update check shouldn't
+  // read as the app itself being broken.
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('update check failed', err);
+    });
+  }
+
   ensureFolders();
 
   trayHandle = createTray({
@@ -393,9 +414,7 @@ app.whenReady().then(() => {
       sendPendingClipboard();
       trayHandle.setClipboardReady(false);
     },
-    onToggleAutoLaunch: (enabled) => {
-      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });
-    },
+    onToggleAutoLaunch: (enabled) => setAutoLaunch(enabled),
     autoLaunchEnabled: app.isPackaged ? app.getLoginItemSettings().openAtLogin : false,
   });
   tray = trayHandle.tray;
@@ -502,4 +521,7 @@ app.whenReady().then(() => {
     app.isQuitting = true;
     app.quit();
   });
+
+  ipcMain.handle('get-auto-launch', () => (app.isPackaged ? app.getLoginItemSettings().openAtLogin : false));
+  ipcMain.on('set-auto-launch', (event, enabled) => setAutoLaunch(enabled));
 });

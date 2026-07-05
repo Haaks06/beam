@@ -130,6 +130,15 @@ function createTray({
       receivedIndicator = active;
       rebuildMenu();
     },
+    // Keeps this checkbox in sync when auto-launch is toggled from the
+    // in-app Settings tab instead of this menu (see main.js's
+    // 'set-auto-launch' IPC handler) -- without this, toggling it in one
+    // place would leave the other surface showing a stale checked state.
+    setAutoLaunch(enabled) {
+      if (enabled === autoLaunch) return;
+      autoLaunch = enabled;
+      rebuildMenu();
+    },
   };
 }
 

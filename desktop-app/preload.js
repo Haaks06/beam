@@ -35,4 +35,9 @@ contextBridge.exposeInMainWorld('beamNative', {
   // for plain text/link clipboard content -- images go through
   // onQueuedFile above instead, same as any other photo.
   onQueuedText: (callback) => ipcRenderer.on('queued-text', (event, text) => callback(text)),
+  // Backs the Settings tab's auto-launch toggle (web-client/src/app.js) --
+  // the same OS-level setting the tray menu's "Start Beam at login"
+  // checkbox already controls (see main.js's shared setAutoLaunch()).
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.send('set-auto-launch', enabled),
 });
