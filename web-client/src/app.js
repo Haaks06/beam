@@ -77,8 +77,6 @@ const startSection = document.getElementById('start-section');
 const connectBtn = document.getElementById('connect-btn');
 const relayUrlInput = document.getElementById('relay-url');
 const pairingCodeInput = document.getElementById('pairing-code');
-const showAdvancedBtn = document.getElementById('show-advanced-btn');
-const advancedSection = document.getElementById('advanced-section');
 const inviteSection = document.getElementById('invite-section');
 const inviteCodeEl = document.getElementById('invite-code');
 const inviteQrEl = document.getElementById('invite-qr');
@@ -87,11 +85,75 @@ const pairSuccessOverlay = document.getElementById('pair-success-overlay');
 const appShell = document.getElementById('app-shell');
 const endedSection = document.getElementById('ended-section');
 const sessionTimerEl = document.getElementById('session-timer');
+const sessionWarningEl = document.getElementById('session-warning');
 const repairLink = document.getElementById('repair-link');
 const receivedList = document.getElementById('received-list');
 const receivedEmpty = document.getElementById('received-empty');
 const connPill = document.getElementById('conn-pill');
 const p2pIndicatorEl = document.getElementById('p2p-indicator');
+const receiveBadge = document.getElementById('receive-badge');
+
+// --- Settings: session length, auto-launch (desktop only), and the
+// advanced/self-host relay URL override -- previously either hardcoded,
+// tray-only, or sitting in the default pairing flow where an average user
+// had no reason to ever see them. ---
+
+const SESSION_DURATION_MIN_MINUTES = 2;
+const SESSION_DURATION_MAX_MINUTES = 15;
+const SESSION_DURATION_DEFAULT_MINUTES = 5;
+
+function loadSessionDurationMinutes() {
+  const raw = Number(localStorage.getItem('sessionDurationMinutes'));
+  if (!raw || raw < SESSION_DURATION_MIN_MINUTES || raw > SESSION_DURATION_MAX_MINUTES) {
+    return SESSION_DURATION_DEFAULT_MINUTES;
+  }
+  return raw;
+}
+
+const settingsBtn = document.getElementById('settings-btn');
+const settingsOverlay = document.getElementById('settings-overlay');
+const settingsCloseBtn = document.getElementById('settings-close-btn');
+const sessionDurationInput = document.getElementById('session-duration-input');
+const sessionDurationValue = document.getElementById('session-duration-value');
+const autoLaunchRow = document.getElementById('auto-launch-row');
+const autoLaunchToggle = document.getElementById('auto-launch-toggle');
+const showSettingsAdvancedBtn = document.getElementById('show-settings-advanced-btn');
+const settingsAdvancedSection = document.getElementById('settings-advanced-section');
+
+if (sessionDurationInput && sessionDurationValue) {
+  sessionDurationInput.value = String(loadSessionDurationMinutes());
+  sessionDurationValue.textContent = `${sessionDurationInput.value} minutes`;
+  sessionDurationInput.addEventListener('input', () => {
+    localStorage.setItem('sessionDurationMinutes', sessionDurationInput.value);
+    sessionDurationValue.textContent = `${sessionDurationInput.value} minutes`;
+  });
+}
+
+if (settingsBtn && settingsOverlay) {
+  settingsBtn.addEventListener('click', async () => {
+    settingsOverlay.style.display = 'flex';
+    if (window.beamNative?.getAutoLaunch && autoLaunchRow && autoLaunchToggle) {
+      autoLaunchRow.style.display = 'block';
+      autoLaunchToggle.checked = await window.beamNative.getAutoLaunch();
+    }
+  });
+}
+if (settingsCloseBtn && settingsOverlay) {
+  settingsCloseBtn.addEventListener('click', () => {
+    settingsOverlay.style.display = 'none';
+  });
+}
+if (autoLaunchToggle) {
+  autoLaunchToggle.addEventListener('change', () => {
+    window.beamNative?.setAutoLaunch?.(autoLaunchToggle.checked);
+  });
+}
+if (showSettingsAdvancedBtn && settingsAdvancedSection) {
+  showSettingsAdvancedBtn.addEventListener('click', () => {
+    const willShow = settingsAdvancedSection.style.display === 'none';
+    settingsAdvancedSection.style.display = willShow ? 'block' : 'none';
+  });
+}
 
 let eventSource = null;
 let invitePollTimer = null;
@@ -128,7 +190,16 @@ function setP2pIndicator(mode) {
     // well before the connection itself settles, so it's always available
     // by the time 'direct' mode actually fires.
     const sameNetwork = p2pController?.isSameNetwork();
-    p2pIndicatorEl.textContent = sameNetwork ? 'Direct (same network)' : 'Direct';
+    // The "(same network)" qualifier is its own element rather than plain
+    // text so a narrow-viewport media query can drop it without touching
+    // the "Direct" part -- see styles.css's max-width:400px block.
+    p2pIndicatorEl.textContent = 'Direct';
+    if (sameNetwork) {
+      const qualifier = document.createElement('span');
+      qualifier.className = 'qualifier';
+      qualifier.textContent = ' (same network)';
+      p2pIndicatorEl.appendChild(qualifier);
+    }
     p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
   } else if (mode === 'relayed') {
     p2pIndicatorEl.textContent = 'Encrypted';
@@ -192,6 +263,9 @@ function activateTab(name) {
   for (const btn of tabButtons) btn.classList.toggle('active', btn.dataset.tab === name);
   for (const [key, panel] of Object.entries(tabPanels)) panel.style.display = key === name ? 'block' : 'none';
   positionTabIndicator();
+  // Viewing the Receive tab is what counts as "seeing" whatever arrived
+  // while the user was on Send -- clear the badge the moment they switch.
+  if (name === 'receive' && receiveBadge) receiveBadge.style.display = 'none';
 }
 for (const btn of tabButtons) {
   btn.addEventListener('click', () => activateTab(btn.dataset.tab));
@@ -225,7 +299,7 @@ function enterStartState() {
   p2pController?.teardown();
   p2pController = null;
   if (p2pIndicatorEl) p2pIndicatorEl.style.display = 'none';
-  advancedSection.style.display = 'none';
+  if (receiveBadge) receiveBadge.style.display = 'none';
   // Whatever P2P-direct items got locally cached for the session that's
   // now over (see saveReceivedItem in loadBacklog/renderItem below) are no
   // longer needed -- prune here so the store can't grow across many past
@@ -281,6 +355,8 @@ function formatRemaining(ms) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+const SESSION_WARNING_THRESHOLD_MS = 25 * 1000;
+
 function enterActiveState() {
   showOnly('active');
   activateTab(lastIntent);
@@ -328,6 +404,7 @@ function enterActiveState() {
     },
   });
 
+  if (sessionWarningEl) sessionWarningEl.style.display = 'none';
   clearInterval(countdownTimer);
   const tick = () => {
     const { expiresAt } = loadConfig();
@@ -337,6 +414,11 @@ function enterActiveState() {
       return;
     }
     sessionTimerEl.textContent = `Session ends in ${formatRemaining(remaining)}`;
+    // Anything not sent by this point is genuinely about to be lost -- the
+    // relay wipes the session the instant expiresAt passes, no grace period.
+    if (sessionWarningEl) {
+      sessionWarningEl.style.display = remaining <= SESSION_WARNING_THRESHOLD_MS ? 'block' : 'none';
+    }
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -488,7 +570,10 @@ async function startNewPairing() {
     const res = await fetch(`${relayUrl}/inbox`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: deviceLabel() }),
+      body: JSON.stringify({
+        label: deviceLabel(),
+        sessionDurationMs: loadSessionDurationMinutes() * 60 * 1000,
+      }),
     });
     if (!res.ok) throw new Error(await parseErrorMessage(res, 'failed to start'));
     const { token } = await res.json();
@@ -505,13 +590,6 @@ async function startNewPairing() {
 
 connectBtn.addEventListener('click', startNewPairing);
 
-if (showAdvancedBtn && advancedSection) {
-  showAdvancedBtn.addEventListener('click', () => {
-    const willShow = advancedSection.style.display === 'none';
-    advancedSection.style.display = willShow ? 'block' : 'none';
-  });
-}
-
 async function claimPairingCode(relayUrl, pairingCode) {
   // This device just scanned/typed someone else's code -- that's something
   // you do because you want to send them something, not because you're
@@ -527,6 +605,7 @@ async function claimPairingCode(relayUrl, pairingCode) {
   await saveConfig({ relayUrl, token, expiresAt });
   setMyRemoteAddr(remoteAddr);
   clearInterval(invitePollTimer);
+  setStatus('', null);
   await showPairedAnimation();
   enterActiveState();
 }
@@ -656,8 +735,11 @@ if (scanCancelBtn) {
 document.getElementById('pair-btn').addEventListener('click', async () => {
   const relayUrl = relayUrlInput.value.trim().replace(/\/+$/, '');
   const pairingCode = pairingCodeInput.value.trim().toUpperCase();
-  if (!relayUrl || !pairingCode) {
-    return setStatus('Enter both the relay URL and pairing code.', 'error');
+  if (!pairingCode) {
+    return setStatus('Enter a pairing code.', 'error');
+  }
+  if (!relayUrl) {
+    return setStatus('Set a relay URL in Settings → Advanced first.', 'error');
   }
   try {
     setStatus('Pairing...');
@@ -830,6 +912,14 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
   // read out of the same cache.
   if (persist && !item.id && token) {
     saveReceivedItem(token, item).catch(() => {});
+  }
+
+  // Same "genuinely live, not backlog" signal as the land-in animation
+  // below -- flag the Receive tab only for an arrival that just happened,
+  // and only if the user isn't already looking at it (activateTab('receive')
+  // is what clears this).
+  if (prepend && receiveBadge && tabPanels.receive.style.display === 'none') {
+    receiveBadge.style.display = 'inline-block';
   }
 
   const row = document.createElement('div');
@@ -1223,12 +1313,13 @@ async function sendLinkText(url) {
     // AES-GCM encrypted with the derived shared secret, if direct send
     // isn't available (not yet connected, or it never connected at all).
     let sentDirect = false;
+    let encryptedBuf;
     if (p2pController) {
       await p2pController.waitUntilReady();
       sentDirect = p2pController.trySendDirect({ type: 'link', content: url, createdAt: Date.now() });
     }
     if (!sentDirect) {
-      const encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(url));
+      encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(url));
       const body = encryptedBuf
         ? { url: bufToBase64(encryptedBuf), encrypted: true }
         : { url }; // no p2pController (shouldn't happen while paired) -- plain send rather than failing outright
@@ -1243,8 +1334,10 @@ async function sendLinkText(url) {
     // Names the actual content sent instead of a generic "Beamed!" — the
     // sender no longer sees this item echo back into their own Received
     // tab (the relay excludes them from their own broadcast now), so this
-    // status line is the one place confirming exactly what went out.
-    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): "${truncate(url, 60)}"`, 'success');
+    // status line is the one place confirming exactly what went out. Spells
+    // out "encrypted" for the relayed case rather than leaving it ambiguous
+    // whether the relay could read it -- see docs/THREAT_MODEL.md.
+    setStatus(`Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}): "${truncate(url, 60)}"`, 'success');
     document.getElementById('link-url').value = '';
   } catch (err) {
     setStatus(`Failed to send: ${err.message}`, 'error');
@@ -1384,6 +1477,7 @@ async function sendSelectedPhoto() {
     // accepted overhead for a photo this size, not worth a second
     // wire format just to avoid it.
     let sentDirect = false;
+    let encryptedBuf;
     if (p2pController) {
       await p2pController.waitUntilReady();
       sentDirect = p2pController.trySendDirect({
@@ -1394,7 +1488,7 @@ async function sendSelectedPhoto() {
       });
     }
     if (!sentDirect) {
-      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
       let res;
       if (encryptedBuf) {
         res = await fetch(`${relayUrl}/items/photo?encrypted=true`, {
@@ -1416,7 +1510,7 @@ async function sendSelectedPhoto() {
       if (res.status === 401) return enterEndedState();
       if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
     }
-    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): ${truncate(selectedPhotoFile.name || 'photo', 60)}`, 'success');
+    setStatus(`Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}): ${truncate(selectedPhotoFile.name || 'photo', 60)}`, 'success');
     setSelectedPhoto(null);
     photoFileInput.value = '';
   } catch (err) {
@@ -1544,6 +1638,7 @@ async function sendSelectedFile() {
     const mimeType = selectedGenericFile.type || 'application/octet-stream';
 
     let sentDirect = false;
+    let encryptedBuf;
     if (p2pController) {
       await p2pController.waitUntilReady();
       sentDirect = p2pController.trySendDirect({
@@ -1555,7 +1650,7 @@ async function sendSelectedFile() {
       });
     }
     if (!sentDirect) {
-      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
       let res;
       if (encryptedBuf) {
         res = await fetch(`${relayUrl}/items/file?encrypted=true`, {
@@ -1575,7 +1670,7 @@ async function sendSelectedFile() {
       if (res.status === 401) return enterEndedState();
       if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
     }
-    setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): ${truncate(selectedGenericFile.name, 60)}`, 'success');
+    setStatus(`Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}): ${truncate(selectedGenericFile.name, 60)}`, 'success');
     selectedGenericFile = null;
     selectedFileNameEl.textContent = '';
     genericFileInput.value = '';
@@ -1763,6 +1858,7 @@ async function stopVoiceRecordingAndSend() {
     const fileBuf = await blob.arrayBuffer();
 
     let sentDirect = false;
+    let encryptedBuf;
     if (p2pController) {
       await p2pController.waitUntilReady();
       sentDirect = p2pController.trySendDirect({
@@ -1773,7 +1869,7 @@ async function stopVoiceRecordingAndSend() {
       });
     }
     if (!sentDirect) {
-      const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+      encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
       let res;
       if (encryptedBuf) {
         res = await fetch(`${relayUrl}/items/voice?encrypted=true`, {
@@ -1794,7 +1890,7 @@ async function stopVoiceRecordingAndSend() {
       if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
     }
     setRecordState('sent');
-    voiceRecordStatus.textContent = `Sent (${sentDirect ? 'direct' : 'relayed'}) — hold to record another.`;
+    voiceRecordStatus.textContent = `Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}) — hold to record another.`;
     // "Sent" is a brief confirmation, not a sticky state -- back to idle
     // once it's had a moment to register.
     sentResetTimer = setTimeout(() => {
@@ -1848,12 +1944,13 @@ if (isExtensionPopup) {
       if (share.kind === 'link') {
         setStatus('Sending...');
         let sentDirect = false;
+        let encryptedBuf;
         if (p2pController) {
           await p2pController.waitUntilReady();
           sentDirect = p2pController.trySendDirect({ type: 'link', content: share.url, createdAt: Date.now() });
         }
         if (!sentDirect) {
-          const encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(share.url));
+          encryptedBuf = await p2pController?.encryptForRelay(new TextEncoder().encode(share.url));
           const body = encryptedBuf ? { url: bufToBase64(encryptedBuf), encrypted: true } : { url: share.url };
           const res = await fetch(`${relayUrl}/items/link`, {
             method: 'POST',
@@ -1863,18 +1960,19 @@ if (isExtensionPopup) {
           if (res.status === 401) return enterEndedState();
           if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
         }
-        setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): "${truncate(share.url, 60)}"`, 'success');
+        setStatus(`Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}): "${truncate(share.url, 60)}"`, 'success');
       } else if (share.kind === 'image') {
         setStatus('Sending image...');
         const fileBuf = base64ToBuf(share.dataBase64);
         const mimeType = share.mimeType || 'image/jpeg';
         let sentDirect = false;
+        let encryptedBuf;
         if (p2pController) {
           await p2pController.waitUntilReady();
           sentDirect = p2pController.trySendDirect({ type: 'photo', mimeType, dataBase64: share.dataBase64, createdAt: Date.now() });
         }
         if (!sentDirect) {
-          const encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
+          encryptedBuf = await p2pController?.encryptForRelay(fileBuf);
           const res = await fetch(`${relayUrl}/items/photo${encryptedBuf ? '?encrypted=true' : ''}`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType },
@@ -1883,7 +1981,7 @@ if (isExtensionPopup) {
           if (res.status === 401) return enterEndedState();
           if (!res.ok) throw new Error(await parseErrorMessage(res, 'send failed'));
         }
-        setStatus(`Sent (${sentDirect ? 'direct' : 'relayed'}): image`, 'success');
+        setStatus(`Sent (${sentDirect ? 'direct' : encryptedBuf ? 'relayed, encrypted' : 'relayed'}): image`, 'success');
       }
     } catch (err) {
       setStatus(`Failed to send: ${err.message}`, 'error');

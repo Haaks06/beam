@@ -24,8 +24,42 @@
         </svg>
       </span>
       <button id="install-btn">Install</button>
+      <button id="settings-btn" class="icon-btn" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
     </div>
   </header>
+
+  <div class="settings-overlay" id="settings-overlay" style="display:none">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <p class="section-title" style="margin:0">Settings</p>
+        <button type="button" id="settings-close-btn" class="link">Close</button>
+      </div>
+
+      <label>Session length: <span id="session-duration-value">5 minutes</span>
+        <input type="range" id="session-duration-input" min="2" max="15" step="1" value="5" />
+      </label>
+      <p class="hint-text" style="text-align:left;margin:6px 0 0">
+        How long a session runs once both devices are paired. Applies the next time you connect.
+      </p>
+
+      <div id="auto-launch-row" style="display:none">
+        <label class="checkbox-row">
+          <input type="checkbox" id="auto-launch-toggle" />
+          Launch Beam when Windows starts
+        </label>
+      </div>
+
+      <button type="button" id="show-settings-advanced-btn" class="toggle-link" style="margin-top:18px">Advanced</button>
+      <div id="settings-advanced-section" style="display:none">
+        <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
+        <p class="hint-text" style="text-align:left;margin:6px 0 0">
+          Only needed if you're self-hosting or pointed at a different relay than the default.
+        </p>
+      </div>
+    </div>
+  </div>
 
   <section id="start-section">
     <p class="tagline">Send a link, photo, file, or voice memo from your phone straight to this PC — instantly, over the real internet, not just shared Wi-Fi.</p>
@@ -35,7 +69,7 @@
       <span class="start-step-sep" aria-hidden="true">&#8594;</span>
       <span>Send</span>
       <span class="start-step-sep" aria-hidden="true">&#8594;</span>
-      <span>Gone in 2 min</span>
+      <span>Timed session</span>
     </div>
   </section>
 
@@ -54,11 +88,6 @@
     <button id="pair-btn" class="primary">Connect</button>
 
     <button type="button" id="scan-qr-btn" class="primary">Scan QR with camera</button>
-
-    <button type="button" id="show-advanced-btn" class="toggle-link">Using a different relay?</button>
-    <div id="advanced-section" style="display:none">
-      <label>Relay URL<input id="relay-url" placeholder="https://your-relay.example.com" /></label>
-    </div>
 
     <button id="invite-cancel-btn" class="link">Cancel</button>
   </section>
@@ -92,10 +121,11 @@
       <span id="p2p-indicator" class="p2p-indicator" style="display:none"></span>
       <button id="repair-link" class="link">Start over</button>
     </div>
+    <p id="session-warning" style="display:none">Session ending soon — anything not sent will be lost.</p>
 
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="send">Send</button>
-      <button class="tab-btn" data-tab="receive">Receive</button>
+      <button class="tab-btn" data-tab="receive">Receive<span class="tab-badge" id="receive-badge" style="display:none"></span></button>
       <span class="tab-indicator" id="tab-indicator"></span>
     </nav>
 
@@ -179,7 +209,7 @@
 
   <section id="ended-section" style="display:none">
     <p class="section-title">Session ended</p>
-    <p class="ended-text">The 2-minute window closed and the relay forgot everything it was holding. Start a new session to keep beaming.</p>
+    <p class="ended-text">The session window closed and the relay forgot everything it was holding. Start a new session to keep beaming.</p>
     <button id="restart-btn" class="primary">Start a new session</button>
   </section>
 

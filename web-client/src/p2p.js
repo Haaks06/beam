@@ -148,6 +148,15 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
   const ready = new Promise((resolve) => {
     resolveReady = resolve;
   });
+  // The pubkey exchange (retried up to the same deadline as the ICE
+  // connection attempt, since it's a separate round trip over /signal) can
+  // still be in flight at the exact moment ICE fails fast and settles mode
+  // to 'relayed' -- without this, encryptForRelay() below would throw on
+  // that race instead of the send just waiting the extra beat it needs.
+  let resolveSharedKeyReady;
+  const sharedKeyReady = new Promise((resolve) => {
+    resolveSharedKeyReady = resolve;
+  });
 
   function setMode(next) {
     if (mode === next) return;
@@ -218,6 +227,7 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
   async function handlePubkey(payload) {
     if (sharedKey) return; // already derived -- ignore a stray duplicate
     sharedKey = await deriveSharedKey(keyPair, payload.key);
+    resolveSharedKeyReady();
     // Both remoteAddr values are the relay's own view of each device's
     // apparent address (see relay-server/routes/pair.js) -- a match is a
     // reasonable "probably the same network" signal (e.g. both behind the
@@ -336,6 +346,13 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
       return false;
     },
     async encryptForRelay(plainBuf) {
+      if (!sharedKey) {
+        // waitUntilReady() only waits for the connection-mode decision
+        // (direct vs relayed), which can settle before the independent
+        // pubkey round trip finishes -- give it a bounded extra beat rather
+        // than failing a send that would have worked a moment later.
+        await Promise.race([sharedKeyReady, new Promise((resolve) => setTimeout(resolve, CONNECT_TIMEOUT_MS))]);
+      }
       if (!sharedKey) throw new Error('no shared key established yet');
       return encryptForRelay(sharedKey, plainBuf);
     },
