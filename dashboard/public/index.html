@@ -185,7 +185,7 @@
         <tr><th>Not present</th><th>Why it's an acceptable tradeoff</th></tr>
         <tr><td>Accounts / passwords</td><td>Removed on purpose — see Patch Notes. No credentials means no credential-stuffing, no password database to leak, nothing to phish for.</td></tr>
         <tr><td>Long-term history</td><td>There's nothing to breach shortly after any given pairing — the data simply doesn't exist anymore.</td></tr>
-        <tr><td>End-to-end encryption</td><td>Traffic is encrypted in transit (HTTPS), but the relay itself can technically see file contents for the session's configured window (5 minutes by default, up to 15) they exist. Worth knowing if that matters for your use case.</td></tr>
+        <tr><td>End-to-end encryption</td><td>Real, but qualified: a direct P2P connection is covered by WebRTC's own DTLS, and a relay-fallback send is AES-GCM encrypted client-side (relay-server/routes/signal.js + web-client/src/p2p.js) so a passively-storing relay can't read it. The gap: the ECDH key exchange itself travels through the relay with no fingerprint verification, so an <i>actively</i> malicious relay could in principle substitute keys and read traffic — see docs/THREAT_MODEL.md's "active vs. passive relay" section. Not the same guarantee as a scheme with out-of-band key verification.</td></tr>
         <tr><td>Abuse-proof rate limiting</td><td>Per-IP limiting is imperfect behind CGNAT/shared IPs — accepted tradeoff for keeping the limits generous enough not to block real usage (this has already been raised twice this session after real false positives).</td></tr>
       </table>
 

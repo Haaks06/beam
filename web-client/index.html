@@ -120,10 +120,11 @@
            tick(). -->
       <span id="session-timer-announce" class="sr-only" aria-live="polite"></span>
       <!-- Phase 2a: whether items are currently going peer-to-peer
-           (WebRTC data channel) or through the relay (still end-to-end
-           encrypted, just not direct) -- see p2p.js. Hidden until a mode
-           actually settles, so there's no flash of a wrong/premature state
-           on a fresh pairing. -->
+           (WebRTC data channel) or through the relay (still AES-GCM
+           encrypted against a passive relay, just not direct -- see
+           app.js's setP2pIndicator and docs/THREAT_MODEL.md) -- see
+           p2p.js. Hidden until a mode actually settles, so there's no
+           flash of a wrong/premature state on a fresh pairing. -->
       <span id="p2p-indicator" class="p2p-indicator" style="display:none"></span>
       <button id="repair-link" class="link">Start over</button>
     </div>

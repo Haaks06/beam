@@ -221,7 +221,14 @@ function setP2pIndicator(mode) {
     p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
   } else if (mode === 'relayed') {
     p2pIndicatorEl.textContent = 'Encrypted';
-    p2pIndicatorEl.title = "Couldn't connect directly — going through the relay, still end-to-end encrypted";
+    // "End-to-end encrypted" is a precise claim this doesn't fully back:
+    // the AES-GCM encryption itself is real, but the ECDH public keys that
+    // derive it are exchanged *through* the relay with no fingerprint/
+    // authentication step -- a relay that were actively malicious (not
+    // just passively storing/forwarding what it's given) could in
+    // principle substitute its own key mid-exchange and read traffic. See
+    // docs/THREAT_MODEL.md's "active vs. passive relay" section.
+    p2pIndicatorEl.title = "Couldn't connect directly — going through the relay, but the content is still encrypted against a passive relay";
   } else {
     p2pIndicatorEl.textContent = 'Connecting…';
     p2pIndicatorEl.title = 'Trying a direct connection to the other device';

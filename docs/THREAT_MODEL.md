@@ -70,6 +70,23 @@ token for that specific, currently-live pairing.
   live — bounded by the same 15-minute/10-minute windows above, but real
   exposure while it lasts. This is the same trust boundary as any
   self-hosted personal server.
+- **An actively malicious relay, for the "encrypted" relay-fallback path
+  (active vs. passive relay).** The AES-GCM encryption used when a P2P
+  connection doesn't come together (see Phase 2a, and web-client/src/
+  p2p.js) is real — a relay that's merely storing/forwarding whatever it's
+  given, even if it logs or inspects traffic, cannot read the resulting
+  ciphertext. But the ECDH public keys that derive that shared key are
+  exchanged *through* the relay itself (`POST /signal`), with no
+  fingerprint or out-of-band verification step on either device. A relay
+  that actively tampered with that exchange — substituting its own key for
+  one or both sides — could perform a man-in-the-middle and read
+  everything, undetected. Put plainly: **this is encryption against a
+  passive relay, not a fully trustless end-to-end scheme** — the app's own
+  "Encrypted" status pill and tooltip are worded to reflect exactly that,
+  not an unqualified "end-to-end encrypted" claim. Real key-fingerprint
+  verification in the pairing UI (e.g., a short code both devices confirm
+  matches before trusting the connection) would close this gap but hasn't
+  been built — it's a real, non-trivial UI/UX addition, not a quick fix.
 - **Malicious file content, for plain (non-encrypted) uploads.** Uploads
   are restricted to a small allowlist per item type — images
   (`lib/sniffImageType.js`), generic files (PDF/.doc/.docx/.zip) and voice
