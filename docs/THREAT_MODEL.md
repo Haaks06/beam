@@ -2,12 +2,15 @@
 
 A pairing ("inbox" in the code/DB — `inboxes` table, `inbox_id` on every
 device, item, and pairing code) is exactly two devices and lives for a
-fixed, short window: it starts with one device (`POST /inbox`), and the
-moment a second device claims a pairing code (`POST /pair/claim`), a
-2-minute clock starts. `lib/sessionCleanup.js` sweeps every few seconds for
-pairings whose clock has run out and deletes their devices, items, and
-uploaded files — after that, both devices' tokens simply 401, since the
-`devices` rows backing them are gone. The security goal is narrow: **prevent
+fixed, short window: it starts with one device (`POST /inbox`, which can
+request a session length between 2 and 15 minutes via `sessionDurationMs`
+— defaulting to 5 and clamped server-side either way, see
+`lib/sessionDuration.js`), and the moment a second device claims a pairing
+code (`POST /pair/claim`), that clock starts. `lib/sessionCleanup.js` sweeps
+every few seconds for pairings whose clock has run out and deletes their
+devices, items, and uploaded files — after that, both devices' tokens
+simply 401, since the `devices` rows backing them are gone. The security
+goal is narrow: **prevent
 random internet users from pushing items into a pairing or reading its
 items, and keep each pairing capped at the two devices that formed it**, not
 to defend against a sophisticated attacker who already possesses a valid
@@ -39,10 +42,13 @@ token for that specific, currently-live pairing.
   the read-only status-polling route (generous, since a normal connect
   screen polls it every 2 seconds) from the actual pairing mutations
   (tighter), so two different concerns never share one bucket.
-- **A token outliving its usefulness.** Every pairing self-destructs 2
-  minutes after both devices join, and any pairing nobody ever finishes
+- **A token outliving its usefulness.** Every pairing self-destructs 2–15
+  minutes after both devices join (whatever was requested at `/inbox` time,
+  clamped to that range — see above), and any pairing nobody ever finishes
   pairing is swept after 10 minutes too (same TTL as its pairing code) — a
   captured token is only ever a short-lived liability, not a standing one.
+  The clamp itself exists for this reason: an unbounded client-requested
+  duration would turn "short-lived" into whatever an attacker asks for.
 
 ## What is explicitly out of scope
 
@@ -52,8 +58,8 @@ token for that specific, currently-live pairing.
   pairing (this is what lets a phone and PC freely exchange items with each
   other during their session). There is no revoke endpoint; the mitigation
   is that every pairing is short-lived by design, so the exposure window is
-  at most 2 minutes (plus whatever unpaired time preceded it, capped at 10
-  minutes).
+  at most 15 minutes (the maximum configurable session length, plus
+  whatever unpaired time preceded it, capped at 10 minutes).
 - **Network-level attackers without HTTPS.** Tokens travel in the
   `Authorization` header (or, for the SSE endpoint, a query parameter) — if
   the relay is ever exposed over plain HTTP, anyone on the network path can
@@ -61,7 +67,7 @@ token for that specific, currently-live pairing.
   requirement in any real deployment, not optional hardening.
 - **A compromised relay host.** If the box running the relay is
   compromised, all tokens and stored items are exposed for as long as they
-  live — bounded by the same 2-minute/10-minute windows above, but real
+  live — bounded by the same 15-minute/10-minute windows above, but real
   exposure while it lasts. This is the same trust boundary as any
   self-hosted personal server.
 - **Malicious file content, for plain (non-encrypted) uploads.** Uploads

@@ -2,10 +2,11 @@
 
 Beam a link or photo from your phone (iOS/Android) or any browser and have
 it land on your PC in real time — over the internet, not just your home
-Wi-Fi. Pairing is exactly two devices at a time, and a pairing only lasts
-2 minutes: once your phone and PC are paired, you get a 2-minute window to
-send/receive, then the relay forgets everything it was holding (items +
-uploaded files) and both devices need to re-pair for another go.
+Wi-Fi. Pairing is exactly two devices at a time, and a pairing only lasts a
+few minutes: once your phone and PC are paired, you get a timed window
+(5 minutes by default, adjustable 2–15 in Settings) to send/receive, then
+the relay forgets everything it was holding (items + uploaded files) and
+both devices need to re-pair for another go.
 
 ## Download
 
@@ -32,9 +33,10 @@ from another source isn't from this project.
 - **`relay-server/`** — a small Express + SQLite server that accepts
   links/photos from one paired device and pushes them to the other in real
   time over Server-Sent Events (SSE). Every pairing ("inbox") is capped at
-  two devices, and once both are present a 2-minute clock starts; when it
-  runs out, `lib/sessionCleanup.js` deletes that pairing's devices, items,
-  and uploaded files.
+  two devices, and once both are present a clock starts (5 minutes by
+  default, adjustable 2–15 minutes in Settings, server-clamped either way);
+  when it runs out, `lib/sessionCleanup.js` deletes that pairing's devices,
+  items, and uploaded files.
 - **`desktop-app/`** — "Beam", an Electron tray app whose window simply
   loads the relay's own web page (see below) — it's the exact same UI a
   phone gets, plus a small native bridge that saves anything received to
@@ -47,8 +49,8 @@ from another source isn't from this project.
   AirDrop-style options).
 - **`ios-shortcut/`** — since iOS doesn't support PWA share targets, one
   Apple Shortcut ("Beam to PC") fills the same role. See
-  [`ios-shortcut/README.md`](ios-shortcut/README.md) — note the 2-minute
-  session limit affects this flow more than the others, since a shortcut's
+  [`ios-shortcut/README.md`](ios-shortcut/README.md) — note the session
+  time limit affects this flow more than the others, since a shortcut's
   token stops working the moment its pairing expires.
 
 Every device is authenticated with a long random token scoped to its
@@ -86,7 +88,7 @@ npm run dev:web       # starts the PWA dev server (Vite) for the manual-share pa
 
 1. `npm run dev:relay`, confirm `curl http://localhost:3000/health` returns `{"ok":true}`.
 2. `curl -X POST http://localhost:3000/inbox -H 'Content-Type: application/json' -d '{"label":"test"}'` → note `token` and `inboxId` (this both starts a new pairing and mints its first device token).
-3. Pair a second device: `curl -X POST http://localhost:3000/pair/init -H "Authorization: Bearer <token>"` → note `pairingCode`, then `curl -X POST http://localhost:3000/pair/claim -H 'Content-Type: application/json' -d '{"pairingCode":"<code>","label":"second device"}'` → note the second `token` and `expiresAt` — this is when the 2-minute session ends.
+3. Pair a second device: `curl -X POST http://localhost:3000/pair/init -H "Authorization: Bearer <token>"` → note `pairingCode`, then `curl -X POST http://localhost:3000/pair/claim -H 'Content-Type: application/json' -d '{"pairingCode":"<code>","label":"second device"}'` → note the second `token` and `expiresAt` — this is when the session ends (5 minutes from now unless `sessionDurationMs` was set on step 2's `/inbox` call).
 4. A third `/pair/init` on the same pairing should now fail with 409 — a pairing is exactly two devices.
 5. In one terminal: `curl -N "http://localhost:3000/events?token=<token>"` to watch the live stream.
 6. In another terminal: `curl -X POST http://localhost:3000/items/link -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'` — it should appear instantly in the SSE stream.
@@ -175,10 +177,11 @@ before running it, rather than trusting a certificate.
   random bytes, never guessable.
 - A pairing is capped at exactly two devices — a third `/pair/init` or
   `/pair/claim` on the same pairing is rejected.
-- Once both devices are present, the pairing has a fixed 2-minute lifetime:
-  `lib/sessionCleanup.js` sweeps expired pairings every few seconds,
-  deleting their devices, items, and uploaded files, so both tokens 401 on
-  their very next request.
+- Once both devices are present, the pairing has a fixed lifetime (5 minutes
+  by default, adjustable 2–15 minutes in Settings — the relay clamps
+  whatever a client requests to that range): `lib/sessionCleanup.js` sweeps
+  expired pairings every few seconds, deleting their devices, items, and
+  uploaded files, so both tokens 401 on their very next request.
 - Uploaded files are restricted by MIME type and size, stored under
   server-generated filenames (never the client-supplied name) to avoid path
   traversal, and the actual bytes are checked against each allowed image
