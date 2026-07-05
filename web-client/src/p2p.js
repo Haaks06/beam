@@ -158,6 +158,16 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     resolveSharedKeyReady = resolve;
   });
 
+  // Shared by encryptForRelay/decryptFromRelay below: waitUntilReady() only
+  // waits for the connection-mode decision (direct vs relayed), which can
+  // settle before the independent pubkey round trip finishes -- give it a
+  // bounded extra beat rather than failing an encrypt/decrypt that would
+  // have worked a moment later.
+  async function ensureSharedKey() {
+    if (sharedKey) return;
+    await Promise.race([sharedKeyReady, new Promise((resolve) => setTimeout(resolve, CONNECT_TIMEOUT_MS))]);
+  }
+
   function setMode(next) {
     if (mode === next) return;
     mode = next;
@@ -338,25 +348,40 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     // /items/* call (using encryptForRelay below to prepare the payload
     // first). Keeping the actual HTTP/error-handling/UI-status logic in
     // app.js, where it already lives, rather than duplicating it here.
+    //
+    // channel.send() itself can throw -- confirmed in practice for a
+    // photo/file/voice memo large enough to exceed the data channel's
+    // negotiated max-message-size (base64-encoding a multi-MB file for the
+    // JSON envelope inflates it further). Uncaught, that exception used to
+    // abort the whole send instead of falling back to the relay path this
+    // function already exists to trigger -- "failing to send at all" for
+    // anything over the limit, even though the relay fallback would have
+    // handled it fine.
     trySendDirect(itemPayload) {
       if (channel && channel.readyState === 'open') {
-        channel.send(JSON.stringify(itemPayload));
-        return true;
+        try {
+          channel.send(JSON.stringify(itemPayload));
+          return true;
+        } catch {
+          return false;
+        }
       }
       return false;
     },
     async encryptForRelay(plainBuf) {
-      if (!sharedKey) {
-        // waitUntilReady() only waits for the connection-mode decision
-        // (direct vs relayed), which can settle before the independent
-        // pubkey round trip finishes -- give it a bounded extra beat rather
-        // than failing a send that would have worked a moment later.
-        await Promise.race([sharedKeyReady, new Promise((resolve) => setTimeout(resolve, CONNECT_TIMEOUT_MS))]);
-      }
+      await ensureSharedKey();
       if (!sharedKey) throw new Error('no shared key established yet');
       return encryptForRelay(sharedKey, plainBuf);
     },
+    // Same bounded wait as encryptForRelay, for the same reason -- an
+    // incoming item can arrive (over SSE) before this device's own pubkey
+    // round trip has finished, especially right after a fresh pairing.
+    // Previously this threw immediately in that window, which is a
+    // meaningful chunk of "arriving but failing to decrypt" reports: it's
+    // not that the item is undecryptable, just that decryption was
+    // attempted a beat too early.
     async decryptFromRelay(combinedBuf) {
+      await ensureSharedKey();
       if (!sharedKey) throw new Error('no shared key established yet');
       return decryptFromRelay(sharedKey, combinedBuf);
     },

@@ -1222,6 +1222,42 @@ function scheduleSseReconnect() {
   sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX_RETRY_MS);
 }
 
+// B1 fix: the native bridge (window.beamNative.itemReceived) and
+// copyIfLink both need actual plaintext, not the ciphertext a relay-
+// fallback encrypted item arrives as. Electron's main process fetches a
+// binary item's fileUrl itself (see desktop-app/saveHandlers.js) and
+// writes whatever bytes it gets straight to disk -- for an encrypted item
+// those bytes are ciphertext, so it was saving corrupt photo-*.jpg/.pdf/
+// .m4a files while the notification claimed success, and
+// looksLikeLink(ciphertext) is never true so auto-copy silently never
+// fired for an encrypted link either. The main process is deliberately
+// never taught about crypto -- the shared key only ever exists here in
+// the renderer -- so this decrypts first and hands over real plaintext,
+// reusing the same dataBase64 shape a P2P-direct transfer already arrives
+// in so saveBinaryItem's existing branch for that just works unchanged.
+async function decryptForDelivery(item) {
+  if (!item.encrypted || !p2pController) return item;
+  try {
+    if (item.type === 'link') {
+      const decryptedBuf = await p2pController.decryptFromRelay(base64ToBuf(item.content));
+      return { ...item, content: new TextDecoder().decode(decryptedBuf) };
+    }
+    if (item.fileUrl && !item.dataBase64) {
+      const { relayUrl, token } = loadConfig();
+      const encRes = await fetch(`${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`);
+      const encBuf = await encRes.arrayBuffer();
+      const decBuf = await p2pController.decryptFromRelay(encBuf);
+      return { ...item, dataBase64: bufToBase64(decBuf) };
+    }
+  } catch {
+    // Couldn't decrypt (e.g. no shared key) -- returning null tells the
+    // caller to skip delivery rather than hand the native bridge/clipboard
+    // something that would just be corrupt or misleading.
+    return null;
+  }
+  return item;
+}
+
 function connectReceivedFeed() {
   disconnectReceivedFeed();
   loadBacklog();
@@ -1252,20 +1288,26 @@ function connectReceivedFeed() {
     scheduleSseReconnect();
   };
   eventSource.addEventListener('ping', noteSseActivity);
-  eventSource.onmessage = (event) => {
+  eventSource.onmessage = async (event) => {
     noteSseActivity();
     const item = JSON.parse(event.data);
     renderItem(item, { prepend: true });
     localStorage.setItem('lastSeenId', String(item.id));
+    // Decrypt before handing off to the native bridge/clipboard -- see
+    // decryptForDelivery's comment. Deliberately after renderItem (fire-
+    // and-forget, unaffected) rather than blocking the on-screen update on
+    // this too.
+    const deliverable = await decryptForDelivery(item);
+    if (!deliverable) return;
     const { relayUrl, token } = loadConfig();
-    window.beamNative?.itemReceived(item, relayUrl, token);
+    window.beamNative?.itemReceived(deliverable, relayUrl, token);
     // Only a genuinely live arrival copies to clipboard — same reasoning as
     // land-in's animation only firing for live items, not backlog: copying
     // every item in a reconnect catch-up batch would silently clobber
     // whatever the user had just copied themselves. Restores what earlier
     // versions of the desktop app used to do (see saveHandlers.js's git
     // history) — beaming a link over is meant to be used right away.
-    copyIfLink(item);
+    copyIfLink(deliverable);
   };
   // Pushed by the relay the instant it deletes an expired session (see
   // relay-server/lib/sessionCleanup.js) — reacting to this beats waiting for
