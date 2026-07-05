@@ -19,7 +19,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL,
     paired_at INTEGER,
-    expires_at INTEGER
+    expires_at INTEGER,
+    session_duration_ms INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS devices (
@@ -76,6 +77,9 @@ if (!inboxColumns.some((c) => c.name === 'paired_at')) {
 }
 if (!inboxColumns.some((c) => c.name === 'expires_at')) {
   db.exec('ALTER TABLE inboxes ADD COLUMN expires_at INTEGER');
+}
+if (!inboxColumns.some((c) => c.name === 'session_duration_ms')) {
+  db.exec('ALTER TABLE inboxes ADD COLUMN session_duration_ms INTEGER');
 }
 
 db.exec('CREATE INDEX IF NOT EXISTS idx_inboxes_expires_at ON inboxes(expires_at)');

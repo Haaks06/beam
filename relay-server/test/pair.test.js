@@ -80,7 +80,7 @@ test('status reflects claimed state', async () => {
   assert.equal(after.body.status, 'claimed');
 });
 
-test('claiming the second device stamps the inbox with a 2-minute expiry', async () => {
+test('claiming the second device stamps the inbox with the default 5-minute expiry', async () => {
   const ownerToken = await createInboxToken();
   const initRes = await request(app)
     .post('/pair/init')
@@ -93,11 +93,45 @@ test('claiming the second device stamps the inbox with a 2-minute expiry', async
     .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
     .expect(200);
   assert.ok(claimRes.body.expiresAt);
-  assert.ok(claimRes.body.expiresAt >= before + 2 * 60 * 1000);
-  assert.ok(claimRes.body.expiresAt <= Date.now() + 2 * 60 * 1000 + 1000);
+  assert.ok(claimRes.body.expiresAt >= before + 5 * 60 * 1000);
+  assert.ok(claimRes.body.expiresAt <= Date.now() + 5 * 60 * 1000 + 1000);
 
   const statusRes = await request(app).get(`/pair/status/${initRes.body.pairingCode}`).expect(200);
   assert.equal(statusRes.body.expiresAt, claimRes.body.expiresAt);
+});
+
+test('a requested session duration within bounds is honored', async () => {
+  const res = await request(app).post('/inbox').send({ label: 'owner', sessionDurationMs: 10 * 60 * 1000 }).expect(201);
+  const ownerToken = res.body.token;
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+
+  const before = Date.now();
+  const claimRes = await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
+    .expect(200);
+  assert.ok(claimRes.body.expiresAt >= before + 10 * 60 * 1000);
+  assert.ok(claimRes.body.expiresAt <= Date.now() + 10 * 60 * 1000 + 1000);
+});
+
+test('a requested session duration outside bounds is clamped, not honored as-is', async () => {
+  const res = await request(app).post('/inbox').send({ label: 'owner', sessionDurationMs: 60 * 60 * 1000 }).expect(201);
+  const ownerToken = res.body.token;
+  const initRes = await request(app)
+    .post('/pair/init')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .expect(200);
+
+  const before = Date.now();
+  const claimRes = await request(app)
+    .post('/pair/claim')
+    .send({ pairingCode: initRes.body.pairingCode, label: 'phone' })
+    .expect(200);
+  // Clamped to the 15-minute max, not the requested 60 minutes.
+  assert.ok(claimRes.body.expiresAt <= before + 15 * 60 * 1000 + 1000);
 });
 
 test('a pairing already at two devices refuses to mint another code', async () => {

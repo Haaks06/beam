@@ -5,6 +5,7 @@ const QRCode = require('qrcode');
 const db = require('../db');
 const { requireToken } = require('../auth');
 const rateLimitHandler = require('../lib/rateLimitHandler');
+const { clampSessionDuration } = require('../lib/sessionDuration');
 
 const router = express.Router();
 
@@ -26,9 +27,6 @@ const mutationLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, handler: rat
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
 const CODE_LENGTH = 6;
 const CODE_TTL_MS = 10 * 60 * 1000;
-// A pairing only ever runs for 2 minutes once both devices are present —
-// see lib/sessionCleanup.js, which deletes everything once expires_at passes.
-const SESSION_DURATION_MS = 2 * 60 * 1000;
 
 function generateCode() {
   let code = '';
@@ -112,7 +110,9 @@ router.post('/init', mutationLimiter, requireToken, async (req, res) => {
 // POST /pair/claim { pairingCode, label } — exchanges a short-lived code for
 // a long-lived device token scoped to whichever inbox minted the code.
 // Unauthenticated by necessity: the claiming device doesn't have a token yet.
-// Claiming the second device is what starts the 2-minute session clock.
+// Claiming the second device is what starts the session clock, for whatever
+// duration the initiating device requested at POST /inbox time (see
+// lib/sessionDuration.js — clamped there, not trusted as-is).
 router.post('/claim', mutationLimiter, (req, res) => {
   // Query-param fallback alongside the JSON body: the iOS Shortcut (see
   // ios-shortcut/) builds its whole request as a URL string with an
@@ -148,7 +148,8 @@ router.post('/claim', mutationLimiter, (req, res) => {
 
   let expiresAt = null;
   if (countDevices.get(pairing.inbox_id).count >= 2) {
-    expiresAt = now + SESSION_DURATION_MS;
+    const inbox = getInbox.get(pairing.inbox_id);
+    expiresAt = now + clampSessionDuration(inbox?.session_duration_ms);
     markPaired.run(now, expiresAt, pairing.inbox_id);
   }
 
