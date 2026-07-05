@@ -284,7 +284,18 @@ function showOnly(section) {
 // active (paired, 2-minute countdown running) -> ended (relay forgot
 // everything; back to start). ---
 
-function enterStartState() {
+// Tears down whatever the previous pairing (if any) had running -- the
+// live countdown, SSE feed, P2P connection, and any in-flight /pair/init
+// poll -- without deciding what screen to show next, so both "back to the
+// start screen" (enterStartState) and "jump straight into a brand-new
+// pairing" (startNewPairing, for the desktop app's "Beam this file" and
+// clipboard quick-send) can reuse it. Skipping this in startNewPairing()
+// used to leave the old countdown running: it reads expiresAt from
+// localStorage on every tick, which startNewPairing()'s saveConfig() call
+// resets to null for the new pairing -- the stale timer then saw that
+// within a second and force-closed the brand-new invite screen straight to
+// "session ended," even though nothing had actually expired.
+function teardownActiveSession() {
   // Invalidate any /pair/init still in flight from an invite we're now
   // leaving (Cancel, "Start over", etc.) — without this, that request can
   // still resolve later and silently repopulate the (currently hidden)
@@ -305,6 +316,10 @@ function enterStartState() {
   // longer needed -- prune here so the store can't grow across many past
   // sessions.
   clearReceivedItems().catch(() => {});
+}
+
+function enterStartState() {
+  teardownActiveSession();
   showOnly('start');
 }
 
@@ -560,8 +575,14 @@ function refreshState() {
 // onQueuedText below) can call it directly and land on a ready QR
 // unconditionally — a click-simulation depended on the start screen
 // already being the visible one at that exact moment, which isn't
-// guaranteed and was silently doing nothing when it wasn't.
+// guaranteed and was silently doing nothing when it wasn't. Always tears
+// down and replaces whatever pairing (if any) was already active/in
+// flight, rather than reusing it — those two entry points are a
+// deliberate "send this now" action, so what's on screen afterward should
+// always be a brand-new pairing, never a session that happens to already
+// be live with some other device.
 async function startNewPairing() {
+  teardownActiveSession();
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
   connectBtn.classList.add('sending');
   connectBtn.disabled = true;
@@ -1354,25 +1375,24 @@ document.getElementById('send-link-btn').addEventListener('click', () => {
 // desktop-app-exclusive: the tray menu's "Send clipboard now" (see
 // desktop-app/main.js's clipboard watcher) hands over whatever text/link
 // was just copied. Clicking "Send clipboard now" is already a clear,
-// deliberate signal to send -- so this skips straight to a ready QR
-// (startNewPairing(), not a screen the user has to act on first)
-// regardless of whatever screen happens to be showing, unless a pairing
-// is already active, in which case it just sends immediately.
+// deliberate signal to send -- so this always skips straight to a fresh,
+// ready QR (startNewPairing(), not a screen the user has to act on first),
+// regardless of whatever screen happens to be showing AND regardless of
+// whether a pairing is already active. Previously an already-active
+// session was reused (sent immediately into it instead), but that's a
+// silent surprise if the existing session is paired with a different
+// device than whoever the user is about to hand this to right now --
+// always starting fresh means what's on screen is always the actual
+// destination.
 let queuedTextAutoSend = null;
 window.beamNative?.onQueuedText?.((text) => {
   const linkInput = document.getElementById('link-url');
   linkInput.value = text;
   if (textSection) textSection.style.display = 'block';
 
-  const { expiresAt } = loadConfig();
-  if (expiresAt && expiresAt > Date.now() && appShell.style.display === 'block') {
-    activateTab('send');
-    sendLinkText(text);
-  } else {
-    queuedTextAutoSend = text;
-    setStatus(`Clipboard queued — pair a device to send it`, 'info');
-    startNewPairing();
-  }
+  queuedTextAutoSend = text;
+  setStatus(`Clipboard queued — pair a device to send it`, 'info');
+  startNewPairing();
 });
 
 // --- Photo drop zone: click to pick, drag-and-drop, or paste from the
@@ -1693,9 +1713,14 @@ sendFileBtn?.addEventListener('click', sendSelectedFile);
 // drop-zone uses, everything else through the generic file path -- rather
 // than a third upload pipeline of its own. Right-clicking a file and
 // choosing "Beam this file" is already a clear, deliberate signal to send
-// it -- so this skips straight to a ready QR (startNewPairing(), not a
-// screen the user has to act on first) unless a pairing is already
-// active, in which case it just sends immediately.
+// it -- so this always skips straight to a fresh, ready QR
+// (startNewPairing(), not a screen the user has to act on first),
+// regardless of whether a pairing is already active. Previously an
+// already-active session was reused (sent immediately into it instead),
+// but that's a silent surprise if the existing session is paired with a
+// different device than whoever the user is about to hand this file to
+// right now -- always starting fresh means what's on screen is always the
+// actual destination.
 let queuedFileAutoSend = null; // 'photo' | 'file' | null
 window.beamNative?.onQueuedFile?.(({ name, mimeType, dataBase64 }) => {
   const bytes = base64ToBuf(dataBase64);
@@ -1712,15 +1737,9 @@ window.beamNative?.onQueuedFile?.(({ name, mimeType, dataBase64 }) => {
     showFileBtn?.classList.remove('locked-toggle');
   }
 
-  const { expiresAt } = loadConfig();
-  if (expiresAt && expiresAt > Date.now() && appShell.style.display === 'block') {
-    activateTab('send');
-    isPhoto ? sendSelectedPhoto() : sendSelectedFile();
-  } else {
-    queuedFileAutoSend = isPhoto ? 'photo' : 'file';
-    setStatus(`"${file.name}" queued — pair a device to send it`, 'info');
-    startNewPairing();
-  }
+  queuedFileAutoSend = isPhoto ? 'photo' : 'file';
+  setStatus(`"${file.name}" queued — pair a device to send it`, 'info');
+  startNewPairing();
 });
 
 // -- Phase 2d: hold-to-record/release-to-send voice memo ------------------
