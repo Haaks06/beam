@@ -14,8 +14,25 @@ const pairRoutes = require('./routes/pair');
 const itemRoutes = require('./routes/items');
 const streamRoutes = require('./routes/stream');
 const signalRoutes = require('./routes/signal');
+const clientErrorRoutes = require('./routes/clientError');
 const { startSessionCleanup } = require('./lib/sessionCleanup');
 const { PUBLIC_RELAY_URL } = require('./lib/publicRelayUrl');
+
+// Minimal server-side error visibility (R5): an uncaught exception or
+// unhandled rejection previously just printed Node's default (sometimes
+// truncated) trace and, for an exception, left the process running in an
+// undefined state. Logging explicitly first, then exiting deliberately for
+// an actual exception, means Fly's process supervisor restarts a clean
+// process instead of one that silently kept serving requests in a broken
+// state. A rejection alone isn't fatal the same way, so it's logged but
+// doesn't exit.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,7 +66,7 @@ app.use(
 if (process.env.PUBLIC_RELAY_URL) {
   const canonicalHost = new URL(PUBLIC_RELAY_URL).hostname;
   app.use((req, res, next) => {
-    if (req.hostname !== canonicalHost && !/^\/(inbox|pair|items|events|health|signal)/.test(req.path)) {
+    if (req.hostname !== canonicalHost && !/^\/(inbox|pair|items|events|health|signal|client-error)/.test(req.path)) {
       return res.redirect(301, `${PUBLIC_RELAY_URL}${req.originalUrl}`);
     }
     next();
@@ -98,6 +115,10 @@ app.use('/events', streamRoutes);
 // bursty ICE candidate exchange actually is, not shared with /items.
 app.use('/signal', signalRoutes);
 
+// Minimal client-side error visibility (R5) -- its own rate limiter lives
+// in routes/clientError.js.
+app.use('/client-error', clientErrorRoutes);
+
 // Exposes the deployed version so the web client can show it and so anyone
 // checking "is my deploy actually live" has a real answer instead of guessing.
 app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
@@ -121,15 +142,19 @@ if (fs.existsSync(webClientDist)) {
   // /ABC123 (see relay-server/routes/pair.js's pairingUrl) — is the actual
   // app. web-client's own client-side routing (see parsePairingLink() in
   // src/app.js) figures out from the path which of those it is.
-  app.get(/^(?!\/(inbox|pair|items|events|health|signal)).*/, (req, res) => {
+  app.get(/^(?!\/(inbox|pair|items|events|health|signal|client-error)).*/, (req, res) => {
     res.sendFile(path.join(webClientDist, 'index.html'));
   });
 }
 
 // Multer/body-parser errors land here (bad file type, payload too large, etc).
+// Previously never logged at all -- any error on this path was completely
+// silent server-side, indistinguishable in the logs from normal traffic
+// regardless of whether it was routine input validation or an actual bug.
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   const status = err.status || 400;
+  console.error(`[error] ${req.method} ${req.path} -> ${status}:`, err.message);
   res.status(status).json({ error: err.message || 'bad request' });
 });
 

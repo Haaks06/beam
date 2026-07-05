@@ -66,6 +66,24 @@ cross-origin callers — the iOS Shortcuts app isn't a browser and doesn't
 enforce CORS either. The API's own token auth is what actually gates
 access, not CORS.
 
+## Error visibility
+
+Everything the relay logs (including server-side errors from the catch-all
+error middleware in `index.js`, uncaught exceptions/unhandled rejections,
+and client-side errors the web client reports to `POST /client-error` —
+see `routes/clientError.js`) goes to stdout/stderr, which Fly already
+captures with zero extra setup:
+
+```bash
+flyctl logs --app beam-wckn2w
+```
+
+This is deliberately minimal — the goal is knowing a bug happened before
+users report it, not a full observability stack. A real error-tracking
+service (Sentry or similar) would be a reasonable upgrade later if volume
+ever justifies it, but isn't set up here since that needs its own account/
+DSN to configure.
+
 ## Alternative: Render, or any other Node host
 
 Nothing here is Fly-specific except the volume mechanics — any host that

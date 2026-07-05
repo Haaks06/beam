@@ -2142,3 +2142,38 @@ window.addEventListener('appinstalled', () => {
     // Non-essential — leave the footer blank if the relay isn't reachable yet.
   }
 })();
+
+// R5: minimal client-side error visibility -- POSTs to the relay's
+// /client-error (see relay-server/routes/clientError.js), which just logs
+// it server-side so it shows up in `fly logs` instead of only ever being
+// seen if a user happens to open devtools and report it themselves.
+// Unauthenticated by design (errors can happen before pairing too) and
+// capped per page load so a genuinely broken loop throwing repeatedly
+// can't turn this into its own spam problem.
+let clientErrorReportsLeft = 5;
+function reportClientError(message, stack) {
+  if (clientErrorReportsLeft <= 0) return;
+  clientErrorReportsLeft -= 1;
+  const { relayUrl } = loadConfig();
+  const base = (relayUrl || window.location.origin).replace(/\/+$/, '');
+  fetch(`${base}/client-error`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: String(message || '').slice(0, 500),
+      stack: String(stack || '').slice(0, 2000),
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+    }),
+  }).catch(() => {
+    // Best-effort -- a reachability problem here isn't itself worth
+    // reporting (that would just recurse).
+  });
+}
+window.addEventListener('error', (event) => {
+  reportClientError(event.message, event.error?.stack);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  reportClientError(reason?.message || String(reason), reason?.stack);
+});

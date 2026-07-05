@@ -51,6 +51,11 @@ test('/health is never redirected, even on a non-canonical host', async () => {
   assert.equal(res.body.ok, true);
 });
 
+test('/client-error is never redirected, even on a non-canonical host', async () => {
+  const res = await request(app).post('/client-error').set('Host', 'beam-wckn2w.fly.dev').send({ message: 'x' });
+  assert.equal(res.status, 204);
+});
+
 test('a request on the canonical host is never redirected', async () => {
   const res = await request(app).get('/app').set('Host', 'app.beamlot.com');
   assert.notEqual(res.status, 301);
