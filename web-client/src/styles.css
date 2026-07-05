@@ -91,7 +91,7 @@
   100% { box-shadow: inset 0 0 0 1px transparent, 0 0 0 0 transparent; border-color: var(--line); }
 }
 
-/* Phase 2e: the session dissolving away the instant the 2-minute window
+/* Phase 2e: the session dissolving away the instant its timed window
    hits zero -- a brief violet flash-then-fade rather than an abrupt cut,
    so "the relay just forgot everything" actually reads as something
    happening rather than a jump cut. */

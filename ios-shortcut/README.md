@@ -26,20 +26,22 @@ then use **Share → Copy iCloud Link** on it. That link *is* signed and
 one-tap install for every future visitor, at the cost of one person doing
 the setup once.
 
-## How this avoids the 2-minute session limit being painful
+## How this avoids the session time limit being painful
 
-Beam's pairings are ephemeral: a phone and PC pair, get a 2-minute window to
+Beam's pairings are ephemeral: a phone and PC pair, get a short timed window
+(5 minutes by default, adjustable 2-15 minutes from Settings) to
 send/receive, then the relay forgets everything until they pair again. A
 token fetched *ahead of time* and pasted into a shortcut would go stale the
-moment that window closes — racing a 2-minute clock by hand is exactly the
-kind of thing worth avoiding.
+moment that window closes — racing that clock by hand is exactly the kind of
+thing worth avoiding.
 
 Instead, both shortcuts claim the pairing code **and** send the item in the
 same run, back-to-back with no user pause in between — from tapping Share to
 the item landing on your PC is a couple of network round-trips, nowhere near
-2 minutes. The only thing with a real shelf life is the *pairing code*
-itself, which is good for 10 minutes before anyone claims it — plenty of
-time to open Beam on your PC, glance at the code, then go share something.
+the session window. The only thing with a real shelf life is the *pairing
+code* itself, which is good for 10 minutes before anyone claims it — plenty
+of time to open Beam on your PC, glance at the code, then go share
+something.
 
 ## Manual build (fallback, or if you'd rather build it yourself)
 

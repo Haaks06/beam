@@ -64,7 +64,7 @@ async function runFileFlowDemo({ log = console.log } = {}) {
     .send({ pairingCode: initRes.body.pairingCode, label: 'Receiver iPhone' })
     .expect(200);
   const receiverToken = claimRes.body.token;
-  record('Device B ("Receiver iPhone") claimed the code', `2-minute session clock started, expiresAt=${new Date(claimRes.body.expiresAt).toISOString()}`);
+  record('Device B ("Receiver iPhone") claimed the code', `session clock started (5 min default, 2-15 configurable), expiresAt=${new Date(claimRes.body.expiresAt).toISOString()}`);
 
   // --- Device A sends a photo ---
   const fakeJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
@@ -119,7 +119,7 @@ async function runFileFlowDemo({ log = console.log } = {}) {
 
   // --- Session expiry: the whole point of "ephemeral" ---
   db.prepare('UPDATE inboxes SET expires_at = ? WHERE id = ?').run(Date.now() - 1000, inboxId);
-  record('Session artificially expired (normally happens automatically 2 minutes after pairing)');
+  record('Session artificially expired (normally happens automatically once the session\'s configured duration elapses)');
 
   sweep();
   const rowAfterSweep = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);

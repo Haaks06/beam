@@ -24,7 +24,7 @@
     <!-- ============ OVERVIEW ============ -->
     <section class="page active" id="page-overview">
       <h1>What Beam actually is</h1>
-      <p class="page-sub">A 2-device, 2-minute, no-account way to beam a photo or link from one device to another. No cloud storage, no history, no sign-up. This page is a working reference, not marketing — every claim on it is either the real running code or a button that runs the real code live.</p>
+      <p class="page-sub">A 2-device, timed (5 minutes by default, 2-15 configurable), no-account way to beam a photo or link from one device to another. No cloud storage, no history, no sign-up. This page is a working reference, not marketing — every claim on it is either the real running code or a button that runs the real code live.</p>
 
       <h2>The mental model</h2>
       <div class="card-grid">
@@ -33,8 +33,8 @@
           <p>A "pairing" is never more than two devices. One creates it, the other joins with a code or QR scan. There's no concept of a third device, a group, or a saved contact.</p>
         </div>
         <div class="card">
-          <h3>⏱️ Exactly two minutes</h3>
-          <p>The instant the second device joins, a 2-minute clock starts. A background sweep (every 5 seconds) destroys everything about the session the moment it expires — no grace period.</p>
+          <h3>⏱️ A timed window</h3>
+          <p>The instant the second device joins, a clock starts (5 minutes by default, adjustable 2-15 in Settings, clamped server-side). A background sweep (every 5 seconds) destroys everything about the session the moment it expires — no grace period.</p>
         </div>
         <div class="card">
           <h3>🚫 No accounts, no history</h3>
@@ -42,7 +42,7 @@
         </div>
         <div class="card">
           <h3>↔️ Bidirectional once paired</h3>
-          <p>Either device can Send or Receive at any point during the session — nobody is locked into one role for the whole 2 minutes.</p>
+          <p>Either device can Send or Receive at any point during the session — nobody is locked into one role for the whole window.</p>
         </div>
       </div>
 
@@ -54,7 +54,7 @@
         </li>
         <li class="pipeline-step">
           <h3>The other device joins</h3>
-          <p>Scanning the QR (or typing the code) hits <code>POST /pair/claim</code>. The instant a second device is present, the inbox is stamped with <code>paired_at</code> and a fixed <code>expires_at</code> exactly 2 minutes later.</p>
+          <p>Scanning the QR (or typing the code) hits <code>POST /pair/claim</code>. The instant a second device is present, the inbox is stamped with <code>paired_at</code> and a fixed <code>expires_at</code> — 5 minutes later by default, or whatever the initiating device requested (2-15 minutes) at <code>POST /inbox</code> time.</p>
         </li>
         <li class="pipeline-step">
           <h3>Either side sends something</h3>
@@ -62,7 +62,7 @@
         </li>
         <li class="pipeline-step">
           <h3>The window closes</h3>
-          <p>2 minutes after pairing, everything about the session — items, uploaded files, both device tokens, the inbox itself — is permanently deleted. Both devices get pushed a <code>session-expired</code> event over their live connection so the UI reacts instantly instead of just going quiet.</p>
+          <p>Once the session's configured duration elapses, everything about it — items, uploaded files, both device tokens, the inbox itself — is permanently deleted. Both devices get pushed a <code>session-expired</code> event over their live connection so the UI reacts instantly instead of just going quiet.</p>
         </li>
       </ol>
 
@@ -123,7 +123,7 @@
           <div class="detail">relay-server/routes/items.js — getItem.get(req.params.id, req.device.inbox_id) — 404 if it doesn't match</div>
         </li>
         <li class="pipeline-step">
-          <h3>9. The 2-minute clock runs out</h3>
+          <h3>9. The session's clock runs out</h3>
           <p>A background sweep runs every 5 seconds, checking for any inbox whose <code>expires_at</code> has passed. When it finds one, it deletes — in this order — every item row, unlinks every uploaded file from disk, deletes both device rows (revoking both tokens instantly), then deletes the inbox row itself.</p>
           <div class="detail">relay-server/lib/sessionCleanup.js — sweep() → destroyInbox(inboxId)</div>
         </li>
@@ -172,7 +172,7 @@
         </div>
         <div class="card">
           <h3>⏳ Guaranteed data expiry <span class="badge ok">enforced</span></h3>
-          <p>Nothing survives past 2 minutes after pairing (or 10 minutes if a code is generated and never claimed) — enforced by a background sweep, not by trusting clients to clean up after themselves.</p>
+          <p>Nothing survives past the session's configured duration after pairing — 5 minutes by default, 2-15 configurable (or 10 minutes if a code is generated and never claimed) — enforced by a background sweep, not by trusting clients to clean up after themselves.</p>
         </div>
         <div class="card">
           <h3>🌐 CORS + Helmet headers <span class="badge ok">enforced</span></h3>
@@ -184,8 +184,8 @@
       <table>
         <tr><th>Not present</th><th>Why it's an acceptable tradeoff</th></tr>
         <tr><td>Accounts / passwords</td><td>Removed on purpose — see Patch Notes. No credentials means no credential-stuffing, no password database to leak, nothing to phish for.</td></tr>
-        <tr><td>Long-term history</td><td>There's nothing to breach two minutes after any given pairing — the data simply doesn't exist anymore.</td></tr>
-        <tr><td>End-to-end encryption</td><td>Traffic is encrypted in transit (HTTPS), but the relay itself can technically see file contents for the ~2-minute window they exist. Worth knowing if that matters for your use case.</td></tr>
+        <tr><td>Long-term history</td><td>There's nothing to breach shortly after any given pairing — the data simply doesn't exist anymore.</td></tr>
+        <tr><td>End-to-end encryption</td><td>Traffic is encrypted in transit (HTTPS), but the relay itself can technically see file contents for the session's configured window (5 minutes by default, up to 15) they exist. Worth knowing if that matters for your use case.</td></tr>
         <tr><td>Abuse-proof rate limiting</td><td>Per-IP limiting is imperfect behind CGNAT/shared IPs — accepted tradeoff for keeping the limits generous enough not to block real usage (this has already been raised twice this session after real false positives).</td></tr>
       </table>
 
@@ -203,7 +203,7 @@
         <tr><th>Route</th><th>Auth</th><th>Purpose</th></tr>
         <tr><td class="method post">POST /inbox</td><td>None</td><td>Creates a new inbox and mints the first device's token in one call. This is the ONLY place a new inbox is ever created.</td></tr>
         <tr><td class="method post">POST /pair/init</td><td>Bearer token</td><td>Generates a pairing code + QR for a <i>second</i> device to join this inbox. Refuses if the inbox already has 2 devices.</td></tr>
-        <tr><td class="method post">POST /pair/claim</td><td>None (can't have a token yet)</td><td>Exchanges a valid, unused, unexpired code for a device token. The second device joining starts the 2-minute clock.</td></tr>
+        <tr><td class="method post">POST /pair/claim</td><td>None (can't have a token yet)</td><td>Exchanges a valid, unused, unexpired code for a device token. The second device joining starts the session's clock (5 minutes by default, 2-15 configurable).</td></tr>
         <tr><td class="method get">GET /pair/status/:code</td><td>None</td><td>Lets the initiating device poll whether its code has been claimed yet, without exposing the resulting token.</td></tr>
       </table>
 
@@ -266,7 +266,7 @@
         <div class="patch-version">Major rewrite</div>
         <h3>Simplified to ephemeral 2-device pairing</h3>
         <ul>
-          <li>Removed accounts, friend connections, and the admin panel entirely in favor of the current 2-device / 2-minute model.</li>
+          <li>Removed accounts, friend connections, and the admin panel entirely in favor of the current 2-device / timed-session model.</li>
           <li><b>Production incident:</b> the rewrite briefly took the live app down — a missing database migration, then a second foreign-key crash from leftover legacy data, both found and fixed with regression tests within the same session. A full pre-rewrite snapshot was preserved (git tag + a Fly volume snapshot) before any of this shipped.</li>
           <li>Desktop app simplified to just load the same web page instead of maintaining separate Hub/pairing/welcome windows.</li>
         </ul>

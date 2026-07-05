@@ -466,8 +466,8 @@ app.whenReady().then(() => {
 
   // A live SSE arrival in the shared web-client page (web-client/src/app.js)
   // calls window.beamNative.itemReceived(...) via preload.js — this is what
-  // keeps the relay forgetting its copy after 2 minutes from also meaning
-  // "the PC never actually got it."
+  // keeps the relay forgetting its copy once the session ends from also
+  // meaning "the PC never actually got it."
   ipcMain.on('item-received', async (event, item, relayUrl, token) => {
     try {
       if (item.type === 'link') {

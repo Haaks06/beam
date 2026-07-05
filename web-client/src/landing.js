@@ -1,7 +1,9 @@
 // Beam marketing landing page — minimal, dependency-free interactivity:
 // mobile nav toggle, scroll-triggered reveal animations, and a purely
-// decorative countdown echoing the product's real 2-minute session timer.
-// Nothing here talks to the relay; the actual app lives at /app.
+// decorative countdown echoing the product's default 5-minute session
+// timer (actually configurable 2-15 minutes in Settings, but the default
+// is the honest thing to echo here). Nothing here talks to the relay; the
+// actual app lives at /app.
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -60,8 +62,9 @@ if (reduceMotion || !('IntersectionObserver' in window)) {
 }
 
 // -- decorative countdowns -------------------------------------------------
-// Purely cosmetic: loops a "2:00 -> 0:00" clock to echo the real product's
-// session timer, without implying this page itself holds a live session.
+// Purely cosmetic: loops a "5:00 -> 0:00" clock to echo the real product's
+// default session timer, without implying this page itself holds a live
+// session.
 
 function formatClock(totalSeconds) {
   const m = Math.floor(totalSeconds / 60);
@@ -69,7 +72,7 @@ function formatClock(totalSeconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function startDecorativeCountdown({ textEl, ringEl, startSeconds = 120 }) {
+function startDecorativeCountdown({ textEl, ringEl, startSeconds = 300 }) {
   if (!textEl && !ringEl) return;
   const total = startSeconds;
   const circumference = ringEl ? 2 * Math.PI * 70 : 0;
@@ -91,11 +94,11 @@ function startDecorativeCountdown({ textEl, ringEl, startSeconds = 120 }) {
 
 startDecorativeCountdown({
   textEl: document.getElementById('hero-timer'),
-  startSeconds: 118,
+  startSeconds: 298,
 });
 
 startDecorativeCountdown({
   textEl: document.getElementById('ring-timer'),
   ringEl: document.querySelector('.timer-ring .progress'),
-  startSeconds: 107,
+  startSeconds: 287,
 });

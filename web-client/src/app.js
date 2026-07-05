@@ -298,8 +298,8 @@ function showOnly(section) {
 }
 
 // --- Session lifecycle: start -> invite (waiting for the other device) ->
-// active (paired, 2-minute countdown running) -> ended (relay forgot
-// everything; back to start). ---
+// active (paired, countdown running for the configured duration) -> ended
+// (relay forgot everything; back to start). ---
 
 // Tears down whatever the previous pairing (if any) had running -- the
 // live countdown, SSE feed, P2P connection, and any in-flight /pair/init
@@ -569,7 +569,7 @@ function refreshState() {
   if (expiresAt && expiresAt <= Date.now()) {
     // A session that already ended before this load ever saw it live (the
     // app was fully closed/killed mid-session, or the machine slept through
-    // the whole 2-minute window) shouldn't greet a fresh launch with a
+    // the whole session window) shouldn't greet a fresh launch with a
     // stale "it ended" dead-end -- that screen is for watching a session
     // end while looking at it, not a cold-boot state. Clear silently and
     // land on Connect instead, same as never having paired at all.

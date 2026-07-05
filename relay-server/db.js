@@ -13,8 +13,9 @@ db.exec(`
   -- An inbox is one ephemeral pairing between exactly two devices. It starts
   -- with one device (whoever calls POST /inbox) and paired_at/expires_at are
   -- both set the moment a second device claims a pairing code (see
-  -- routes/pair.js) — from that instant the pairing has a fixed 2-minute
-  -- lifetime, after which lib/sessionCleanup.js deletes everything below.
+  -- routes/pair.js) — from that instant the pairing has a fixed lifetime
+  -- (5 min default, 2-15 configurable, see lib/sessionDuration.js), after
+  -- which lib/sessionCleanup.js deletes everything below.
   CREATE TABLE IF NOT EXISTS inboxes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL,
