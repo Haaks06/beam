@@ -25,6 +25,16 @@ function saveConfig({ relayUrl, token, expiresAt }) {
   return Promise.all([setConfigValue('relayUrl', relayUrl), setConfigValue('token', token)]);
 }
 
+async function clearConfigValue(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    tx.objectStore(CONFIG_STORE).delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 function clearConfig() {
   localStorage.removeItem('relayUrl');
   localStorage.removeItem('token');
@@ -32,6 +42,13 @@ function clearConfig() {
   localStorage.removeItem('lastSeenId');
   localStorage.removeItem('lastIntent');
   localStorage.removeItem('myRemoteAddr');
+  // public/sw.js's share-target handler can only read config from
+  // IndexedDB (service workers have no localStorage access), not from
+  // here -- leaving a stale token/relayUrl there after a session ended
+  // meant Android's share sheet kept "succeeding" against a token the
+  // relay had already deleted.
+  clearConfigValue('relayUrl').catch(() => {});
+  clearConfigValue('token').catch(() => {});
 }
 
 function loadConfig() {
@@ -2053,6 +2070,11 @@ if (isExtensionPopup) {
 const shareStatus = new URLSearchParams(window.location.search).get('shared');
 if (shareStatus === 'ok') setStatus('Shared!', 'success');
 if (shareStatus === 'error') setStatus('Share failed — check pairing.', 'error');
+// public/sw.js's share-target handler redirects here (no ?shared= at all)
+// when there's no pairing to share into -- previously silent, so sharing
+// from Android while unpaired/expired looked like it just did nothing.
+const shareError = new URLSearchParams(window.location.search).get('error');
+if (shareError === 'not-paired') setStatus('Pair this device first, then share again.', 'error');
 
 prefillRelayUrl();
 claimFromQrScan().then((scanned) => {

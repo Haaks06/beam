@@ -57,22 +57,29 @@ async function handleShareTarget(request) {
     const url = formData.get('url') || formData.get('text');
     const photo = formData.get('photo');
 
+    let res;
     if (photo && photo.size > 0) {
       const fd = new FormData();
       fd.append('file', photo);
-      await fetch(`${relayUrl}/items/photo`, {
+      res = await fetch(`${relayUrl}/items/photo`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
     } else if (url) {
-      await fetch(`${relayUrl}/items/link`, {
+      res = await fetch(`${relayUrl}/items/link`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
     }
 
+    // fetch() doesn't throw for a non-2xx response -- a 401 (the session
+    // already ended, the relay deleted the device row) used to fall
+    // through to "shared=ok" regardless, since nothing ever checked this.
+    if (res && !res.ok) {
+      return Response.redirect('/app?shared=error', 303);
+    }
     return Response.redirect('/app?shared=ok', 303);
   } catch (err) {
     return Response.redirect('/app?shared=error', 303);
