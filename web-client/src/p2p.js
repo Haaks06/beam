@@ -234,8 +234,23 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     await postSignalRetrying(relayUrl, token, 'offer', { sdp: offer.sdp, type: offer.type }, deadline);
   }
 
+  // Tracks the exact pubkey string already derived from, distinct from
+  // just "do we have a sharedKey at all" -- a mid-session reload on either
+  // device generates a brand-new ECDH keypair and immediately (re-)sends
+  // its pubkey (see start() below), but the old "if (sharedKey) return"
+  // guard here ignored that entirely once a key had ever been derived
+  // once. The peer that didn't reload kept encrypting/decrypting with the
+  // now-stale key, silently breaking relay-fallback for the rest of the
+  // session ("no shared key established yet" / failed decrypts were the
+  // visible symptom, not the actual cause). Re-deriving on any genuinely
+  // new incoming key fixes it either direction; only an exact repeat of
+  // the same key (postSignalRetrying resends every 400ms until delivered)
+  // is skipped, to avoid pointless re-derivation of what's already current.
+  let lastProcessedPubKeyB64 = null;
   async function handlePubkey(payload) {
-    if (sharedKey) return; // already derived -- ignore a stray duplicate
+    if (payload.key === lastProcessedPubKeyB64) return;
+    const isFirstKeyThisInstance = lastProcessedPubKeyB64 === null;
+    lastProcessedPubKeyB64 = payload.key;
     sharedKey = await deriveSharedKey(keyPair, payload.key);
     resolveSharedKeyReady();
     // Both remoteAddr values are the relay's own view of each device's
@@ -245,6 +260,24 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     // informational label.
     if (myRemoteAddr && payload.remoteAddr && myRemoteAddr === payload.remoteAddr) {
       sameNetwork = true;
+    }
+    // Re-sending here (not just once from start()) is what actually closes
+    // the reload gap: start() only ever sends this device's own pubkey
+    // once, retried for a few seconds after *this* instance was created.
+    // The device that DIDN'T reload has long since stopped retrying its
+    // original send by the time the other one comes back with a fresh
+    // keypair -- without echoing a pubkey back here, the reloaded device
+    // would derive a key from the peer's pubkey just fine, but the peer
+    // would never receive the reloaded device's *new* key at all, since
+    // nothing would ever prompt it to send one again. Skipped on this
+    // instance's own first-ever key (isFirstKeyThisInstance) purely so a
+    // completely normal, never-reloaded pairing doesn't do a redundant
+    // extra round trip on top of start()'s own initial send -- the guard
+    // above (skip an exact repeat) is what stops this from ping-ponging
+    // forever once both sides have caught up.
+    if (!isFirstKeyThisInstance) {
+      const pubKeyB64 = await exportPubKey(keyPair);
+      postSignalRetrying(relayUrl, token, 'pubkey', { key: pubKeyB64, remoteAddr: myRemoteAddr }, Date.now() + CONNECT_TIMEOUT_MS);
     }
   }
 
@@ -368,9 +401,15 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
       }
       return false;
     },
+    // Callers (see app.js's sendLinkText/sendSelectedPhoto/etc.) interpolate
+    // this message directly into a user-facing "Failed to send: ..."
+    // status line -- worded as plain language on purpose, not as an
+    // internal/debug string, for the rare case this bounded wait genuinely
+    // times out (e.g. the other device's browser lacks WebRTC/WebCrypto
+    // entirely) rather than just being a beat too early.
     async encryptForRelay(plainBuf) {
       await ensureSharedKey();
-      if (!sharedKey) throw new Error('no shared key established yet');
+      if (!sharedKey) throw new Error("couldn't set up encryption with the other device");
       return encryptForRelay(sharedKey, plainBuf);
     },
     // Same bounded wait as encryptForRelay, for the same reason -- an
@@ -382,7 +421,7 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     // attempted a beat too early.
     async decryptFromRelay(combinedBuf) {
       await ensureSharedKey();
-      if (!sharedKey) throw new Error('no shared key established yet');
+      if (!sharedKey) throw new Error("couldn't set up encryption with the other device");
       return decryptFromRelay(sharedKey, combinedBuf);
     },
   };

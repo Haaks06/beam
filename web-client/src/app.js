@@ -1000,8 +1000,10 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
       // Shared secret not established (e.g. this device reloaded mid-
       // session and lost its ephemeral keypair) -- show plainly that it
       // couldn't be read rather than silently rendering ciphertext as if
-      // it were the real content.
-      displayContent = '[Encrypted — could not decrypt]';
+      // it were the real content. Worded like this app's other inline
+      // failure states ("Couldn't access the camera: ...", etc.) instead
+      // of a bracketed/debug-looking placeholder.
+      displayContent = "Couldn't decrypt this link";
     }
   }
 
@@ -1029,6 +1031,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
     // handler above) arrives as base64 bytes with no relay fileUrl at all
     // -- nothing to fetch or decrypt, just decode it straight to a Blob.
     let fileSrc;
+    let decryptFailed = false;
     if (item.dataBase64) {
       fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'image/jpeg' }));
     } else {
@@ -1041,14 +1044,18 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'image/jpeg' }));
         } catch {
           // Falls through with the raw (still-encrypted) fileSrc -- the
-          // <img> just fails to decode it, which is at least visibly wrong
-          // rather than silently showing nothing or the wrong content.
+          // <img> just fails to decode it, showing the browser's own
+          // broken-image icon. That's visibly wrong rather than silently
+          // showing nothing, but the icon alone doesn't say why -- the alt
+          // text below does, consistent with this app's other "Couldn't
+          // ..." failure wording instead of a raw/blank state.
+          decryptFailed = true;
         }
       }
     }
     const img = document.createElement('img');
     img.src = fileSrc;
-    img.alt = 'Received photo';
+    img.alt = decryptFailed ? "Couldn't decrypt this photo" : 'Received photo';
     row.appendChild(img);
     const dl = document.createElement('a');
     dl.href = fileSrc;
@@ -1063,6 +1070,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
     // fileUrl+decrypt), just rendered as a filename/icon row instead of an
     // <img> since it's an arbitrary PDF/.doc/.docx/.zip.
     let fileSrc;
+    let decryptFailed = false;
     if (item.dataBase64) {
       fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'application/octet-stream' }));
     } else {
@@ -1074,7 +1082,10 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
           const decBuf = await p2pController.decryptFromRelay(encBuf);
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'application/octet-stream' }));
         } catch {
-          // Falls through with the raw (still-encrypted) fileSrc.
+          // Falls through with the raw (still-encrypted) fileSrc -- the
+          // filename label below says so instead of leaving a download
+          // link that would just silently produce a corrupt file.
+          decryptFailed = true;
         }
       }
     }
@@ -1086,7 +1097,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
     contentRow.appendChild(icon);
     const name = document.createElement('span');
     name.className = 'file-name';
-    name.textContent = item.filename || 'file';
+    name.textContent = decryptFailed ? `${item.filename || 'file'} (couldn't decrypt)` : item.filename || 'file';
     contentRow.appendChild(name);
     const dl = document.createElement('a');
     dl.href = fileSrc;
@@ -1100,6 +1111,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
   } else if (item.type === 'voice') {
     // Same dual-path shape again, rendered as a native <audio> player.
     let fileSrc;
+    let decryptFailed = false;
     if (item.dataBase64) {
       fileSrc = URL.createObjectURL(new Blob([base64ToBuf(item.dataBase64)], { type: item.mimeType || 'audio/webm' }));
     } else {
@@ -1111,12 +1123,21 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
           const decBuf = await p2pController.decryptFromRelay(encBuf);
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'audio/webm' }));
         } catch {
-          // Falls through with the raw (still-encrypted) fileSrc.
+          // Falls through with the raw (still-encrypted) fileSrc -- an
+          // <audio> element has no equivalent of alt text, so this needs
+          // its own visible label instead (below) rather than just a
+          // silently-broken player.
+          decryptFailed = true;
         }
       }
     }
     const contentRow = document.createElement('div');
     contentRow.className = 'item-content-row voice-row';
+    if (decryptFailed) {
+      const failedLabel = document.createElement('span');
+      failedLabel.textContent = "Couldn't decrypt this voice memo";
+      contentRow.appendChild(failedLabel);
+    }
     const audio = document.createElement('audio');
     audio.controls = true;
     audio.src = fileSrc;
