@@ -18,4 +18,17 @@
 
 !macro customUnInstall
   DeleteRegKey HKCU "Software\Classes\*\shell\BeamThisFile"
+  ; app.setLoginItemSettings (main.js's setAutoLaunch) writes this Run
+  ; value on Windows -- confirmed by inspecting the actual registry after
+  ; a real install, not assumed: Electron's default (no custom AUMID set)
+  ; is "electron.app.<app.getName()>", i.e. "electron.app.Beam" here, NOT
+  ; plain "Beam". Left behind on uninstall, this was a broken Start-Menu-
+  ; free login entry pointing at an exe that no longer exists.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.Beam"
+  ; Electron's userData dir (auto-launch's first-run marker, cache, local
+  ; storage) -- distinct from Documents\Beam / Pictures\Beam, where actual
+  ; received files live and are deliberately left untouched. Nothing here
+  ; is worth preserving across an uninstall for an app with no accounts/
+  ; settings to speak of, and leaving it is just clutter.
+  RMDir /r "$APPDATA\Beam"
 !macroend
