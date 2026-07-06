@@ -2,14 +2,16 @@
    Beam — design tokens & components
 
    Accent is a flat "signal red" scale (--accent-*), anchored on #630000
-   maroon per product direction: a literal red beam, replacing the product
-   mark's violet (public/beam-logo.jpg still shows the original violet beam
-   artwork -- a raster asset, left as-is). Matches web-client/src/landing.css's
-   scale so the marketing site and this app (desktop tray window, phone PWA,
-   Chrome extension popup) read as one product. Note: --error below is a
-   separate, pre-existing pink-red (#ff5470) for error states -- worth
-   double-checking primary red buttons/badges never sit close enough to an
-   error message to blur the two together.
+   maroon per product direction: a literal red beam. public/beam-logo.jpg
+   and every icon/logo asset (chrome-extension/icons, desktop-app/assets,
+   web-client/public/icons) were replaced in the same pass -- an arrow-
+   shaped red "beam" mark, not the original violet "B" wave-shape. Matches
+   web-client/src/landing.css's scale so the marketing site and this app
+   (desktop tray window, phone PWA, Chrome extension popup) read as one
+   product. Note: --error below is a separate, pre-existing pink-red
+   (#ff5470) for error states -- worth double-checking primary red
+   buttons/badges never sit close enough to an error message to blur the
+   two together.
    ========================================================================== */
 
 @font-face {

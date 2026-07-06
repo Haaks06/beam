@@ -7,12 +7,14 @@
    a single-purpose utility screen, not a full-width marketing page).
 
    Accent color is a flat "signal red" scale (--accent-*), anchored on
-   #630000 maroon per product direction: a literal red beam, replacing the
-   product mark's violet. This intentionally diverges from the mark itself
-   (public/beam-logo.jpg, left as-is — a raster asset, out of scope for a
-   CSS pass). Note: the app already uses --error (a pink-red, #ff5470) for
-   error states — worth double-checking primary red CTAs never sit close
-   enough to an error message to blur the two together.
+   #630000 maroon per product direction: a literal red beam. public/beam-
+   logo.jpg and every icon/logo asset across the repo were replaced in the
+   same pass with a new arrow-shaped red mark, not touched-up in place --
+   see the 4-logo source sheet this was cropped from if it ever needs
+   regenerating at higher resolution. Note: the app already uses --error
+   (a pink-red, #ff5470) for error states — worth double-checking primary
+   red CTAs never sit close enough to an error message to blur the two
+   together.
    ========================================================================== */
 
 @font-face {
