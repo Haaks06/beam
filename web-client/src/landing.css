@@ -6,14 +6,13 @@
    app stylesheet's base rules — e.g. body max-width: 440px — are built for
    a single-purpose utility screen, not a full-width marketing page).
 
-   Accent color is a flat "signal blue" scale (--accent-*), chosen
-   deliberately over the product mark's violet: cooler/calmer reads as
-   trustworthy for a privacy-first product in a way purple (now pattern-
-   matched to generic AI products) doesn't. This intentionally diverges
-   from styles.css's violet scale, sampled from public/beam-logo.jpg — the
-   marketing site and the pairing app are no longer color-matched 1:1; the
-   logo mark itself is left as-is (raster asset, out of scope for a CSS
-   pass).
+   Accent color is a flat "signal red" scale (--accent-*), anchored on
+   #630000 maroon per product direction: a literal red beam, replacing the
+   product mark's violet. This intentionally diverges from the mark itself
+   (public/beam-logo.jpg, left as-is — a raster asset, out of scope for a
+   CSS pass). Note: the app already uses --error (a pink-red, #ff5470) for
+   error states — worth double-checking primary red CTAs never sit close
+   enough to an error message to blur the two together.
    ========================================================================== */
 
 @font-face {
@@ -41,14 +40,14 @@
      clear 4.5:1. */
   --muted-2: #7a70ad;
 
-  /* -- signal blue scale: flat accent, no gradient stops -- */
-  --accent-50: #cdeeff;
-  --accent-300: #6dc3ea;
-  --accent-400: #3fa0d9;
-  --accent-500: #14739f;
-  --accent-600: #0f5a7d;
-  --accent-700: #0b4560;
-  --accent-900: #041824;
+  /* -- signal red scale: flat accent, no gradient stops -- */
+  --accent-50: #ffdcdc;
+  --accent-300: #e8807f;
+  --accent-400: #d13a3a;
+  --accent-500: #b30d0d;
+  --accent-600: #8c0a0a;
+  --accent-700: #630000;
+  --accent-900: #330000;
 
   --error: #ff5470;
 
@@ -94,9 +93,9 @@
   100% { left: 106%; opacity: 0; transform: translateY(-50%) scale(0.6); }
 }
 @keyframes beam-pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(20, 115, 159, 0.5); }
-  70% { box-shadow: 0 0 0 8px rgba(20, 115, 159, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(20, 115, 159, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(179, 13, 13, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(179, 13, 13, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(179, 13, 13, 0); }
 }
 @keyframes reveal-up {
   from { opacity: 0; transform: translateY(18px); }
@@ -217,7 +216,7 @@ svg { display: block; }
   height: 6px;
   border-radius: 50%;
   background: var(--accent-400);
-  box-shadow: 0 0 0 0 rgba(20, 115, 159, 0.6);
+  box-shadow: 0 0 0 0 rgba(179, 13, 13, 0.6);
   animation: beam-pulse-ring 2.2s ease-out infinite;
 }
 
@@ -474,7 +473,7 @@ svg { display: block; }
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--accent-50);
-  box-shadow: 0 0 6px 2px rgba(63, 160, 217, 0.6), 0 0 2px 1px #fff;
+  box-shadow: 0 0 6px 2px rgba(209, 58, 58, 0.6), 0 0 2px 1px #fff;
   transform: translateY(-50%);
   animation: photon-travel 2.6s var(--ease-out-expo) infinite;
 }
@@ -535,9 +534,9 @@ svg { display: block; }
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: rgba(20, 115, 159, 0.12);
+  background: rgba(179, 13, 13, 0.12);
   color: var(--accent-300);
-  border: 1px solid rgba(20, 115, 159, 0.25);
+  border: 1px solid rgba(179, 13, 13, 0.25);
 }
 
 /* -- alternating feature sections ------------------------------------------ */

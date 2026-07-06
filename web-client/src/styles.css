@@ -1,13 +1,15 @@
 /* ==========================================================================
    Beam — design tokens & components
 
-   Palette is extracted directly from the product mark (public/beam-logo.jpg):
-   a "B" formed of two converging wave shapes on near-black, with a violet
-   beam of light shooting out of the point where they meet. Every accent
-   color below is sampled from that artwork rather than invented — the
-   near-white core of the beam is the brightest thing in the app and is
-   reserved for the single moment something "lands"; the mid-violet is the
-   steady/live color; the deep violet is used for ambient depth only.
+   Accent is a flat "signal red" scale (--accent-*), anchored on #630000
+   maroon per product direction: a literal red beam, replacing the product
+   mark's violet (public/beam-logo.jpg still shows the original violet beam
+   artwork -- a raster asset, left as-is). Matches web-client/src/landing.css's
+   scale so the marketing site and this app (desktop tray window, phone PWA,
+   Chrome extension popup) read as one product. Note: --error below is a
+   separate, pre-existing pink-red (#ff5470) for error states -- worth
+   double-checking primary red buttons/badges never sit close enough to an
+   error message to blur the two together.
    ========================================================================== */
 
 @font-face {
@@ -39,17 +41,14 @@
      than an arbitrarily lightened one-off. */
   --muted-2: #7a70ad;
 
-  /* -- beam violet scale, sampled from the mark -- */
-  --violet-50: #f2d6ff;
-  --violet-300: #b586ff;
-  --violet-400: #9659f8;
-  --violet-500: #7238f5;
-  --violet-600: #5d25d4;
-  --violet-700: #401590;
-  --violet-900: #1f0a4a;
-
-  --beam-gradient: linear-gradient(115deg, var(--violet-400), var(--violet-500) 55%, var(--violet-600));
-  --beam-gradient-soft: linear-gradient(90deg, var(--violet-50), var(--violet-400) 30%, transparent 85%);
+  /* -- signal red scale: flat accent, no gradient stops -- */
+  --accent-50: #ffdcdc;
+  --accent-300: #e8807f;
+  --accent-400: #d13a3a;
+  --accent-500: #b30d0d;
+  --accent-600: #8c0a0a;
+  --accent-700: #630000;
+  --accent-900: #330000;
 
   --error: #ff5470;
 
@@ -82,9 +81,9 @@
 }
 
 @keyframes beam-pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0.55); }
-  70% { box-shadow: 0 0 0 9px rgba(150, 89, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(209, 58, 58, 0.55); }
+  70% { box-shadow: 0 0 0 9px rgba(209, 58, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(209, 58, 58, 0); }
 }
 
 @keyframes land-in {
@@ -94,12 +93,12 @@
 }
 
 @keyframes landed-flash {
-  0% { box-shadow: inset 0 0 0 1px var(--violet-50), 0 0 22px -4px var(--violet-400); border-color: var(--violet-300); }
+  0% { box-shadow: inset 0 0 0 1px var(--accent-50), 0 0 22px -4px var(--accent-400); border-color: var(--accent-300); }
   100% { box-shadow: inset 0 0 0 1px transparent, 0 0 0 0 transparent; border-color: var(--line); }
 }
 
 /* Phase 2e: the session dissolving away the instant its timed window
-   hits zero -- a brief violet flash-then-fade rather than an abrupt cut,
+   hits zero -- a brief bright flash-then-fade rather than an abrupt cut,
    so "the relay just forgot everything" actually reads as something
    happening rather than a jump cut. */
 @keyframes burn-out {
@@ -108,11 +107,6 @@
   100% { opacity: 0; filter: blur(16px) brightness(2); transform: scale(1.04); }
 }
 #app-shell.burn-out { animation: burn-out 0.55s var(--ease-out-expo) both; pointer-events: none; }
-
-@keyframes sweep {
-  0% { transform: translateX(-160%) skewX(-14deg); }
-  100% { transform: translateX(260%) skewX(-14deg); }
-}
 
 @keyframes photon-travel {
   0% { left: -4%; opacity: 0; }
@@ -222,7 +216,6 @@ body::after {
   height: 26px;
   border-radius: 7px;
   display: block;
-  filter: drop-shadow(0 0 10px rgba(114, 56, 245, 0.55));
 }
 h1 {
   font-family: var(--font-display);
@@ -275,9 +268,9 @@ h1 {
 .checkbox-row input[type="checkbox"] {
   width: auto;
   margin: 0;
-  accent-color: var(--violet-500);
+  accent-color: var(--accent-500);
 }
-#session-duration-input { accent-color: var(--violet-500); }
+#session-duration-input { accent-color: var(--accent-500); }
 .tagline {
   font-size: 12.5px;
   color: var(--muted);
@@ -301,7 +294,7 @@ h1 {
   color: var(--muted-2);
 }
 .signal-bars .bar { stroke: currentColor; transition: stroke 0.25s ease, opacity 0.25s ease; }
-.signal.connected { color: var(--violet-400); }
+.signal.connected { color: var(--accent-400); }
 .signal.connecting .bar-2, .signal.connecting .bar-3 { opacity: 0.3; }
 .signal.connecting .bar-1 { animation: signal-blink 1s ease-in-out infinite; }
 .signal.disconnected { color: var(--error); }
@@ -350,7 +343,7 @@ input, select {
   color: var(--fg);
   transition: border-color 0.2s ease;
 }
-input:focus, select:focus { outline: none; border-bottom-color: var(--violet-400); }
+input:focus, select:focus { outline: none; border-bottom-color: var(--accent-400); }
 input::placeholder { color: var(--muted-2); }
 select option { background: var(--surface); color: var(--fg); }
 
@@ -373,29 +366,22 @@ button {
 button:hover { border-color: var(--line-strong); color: var(--fg); background: var(--surface-hover); }
 button:active { transform: scale(0.98); }
 button:disabled { opacity: 0.45; cursor: default; transform: none; }
-button:focus-visible { outline: 2px solid var(--violet-400); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 2px; }
 
 button.primary {
-  position: relative;
-  overflow: hidden;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 6px 20px -8px rgba(114, 56, 245, 0.65);
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.5);
 }
-button.primary::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.5) 50%, transparent 70%);
-  transform: translateX(-160%) skewX(-14deg);
+button.primary:hover { border-color: transparent; background: var(--accent-600); }
+button.primary.sending {
   pointer-events: none;
+  animation: sending-pulse 1.1s ease-in-out infinite;
 }
-button.primary:hover::after { animation: sweep 0.9s var(--ease-out-expo); }
-button.primary:hover { border-color: transparent; background: var(--beam-gradient); }
-button.primary.sending { pointer-events: none; }
-button.primary.sending::after {
-  animation: sweep 1.1s var(--ease-out-expo) infinite;
+@keyframes sending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 button.link {
@@ -422,7 +408,7 @@ button.link:hover { color: var(--fg); background: none; }
 .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
 #status { min-height: 18px; color: var(--muted); font-size: 12px; text-align: center; margin-top: 12px; transition: color 0.2s ease; }
-#status.success { color: var(--violet-300); }
+#status.success { color: var(--accent-300); }
 #status.error { color: var(--error); }
 
 #session-banner {
@@ -434,7 +420,7 @@ button.link:hover { color: var(--fg); background: none; }
   margin-bottom: 12px;
 }
 /* Phase 2a: direct (P2P data channel) vs relayed (encrypted fallback) --
-   quiet by default (muted, no fill), a soft violet fill once actually
+   quiet by default (muted, no fill), a soft red fill once actually
    direct, since that's the state worth drawing a little attention to. */
 .p2p-indicator {
   font-family: var(--font-mono);
@@ -446,14 +432,14 @@ button.link:hover { color: var(--fg); background: none; }
   border: 1px solid var(--line);
   border-radius: 999px;
 }
-.p2p-indicator.direct { color: var(--violet-300); border-color: var(--violet-500); background: rgba(114, 56, 245, 0.1); }
+.p2p-indicator.direct { color: var(--accent-300); border-color: var(--accent-500); background: rgba(179, 13, 13, 0.1); }
 .p2p-indicator.relayed { color: var(--muted); }
 
 #session-timer {
   font-family: var(--font-mono);
   font-size: 11.5px;
   letter-spacing: 0.04em;
-  color: var(--violet-300);
+  color: var(--accent-300);
 }
 #repair-link {
   font-size: 11px;
@@ -515,14 +501,14 @@ button.link:hover { color: var(--fg); background: none; }
 .scan-frame .corner.tr { top: 0; right: 0; border-top: 2px solid; border-right: 2px solid; border-radius: 0 8px 0 0; }
 .scan-frame .corner.bl { bottom: 0; left: 0; border-bottom: 2px solid; border-left: 2px solid; border-radius: 0 0 0 8px; }
 .scan-frame .corner.br { bottom: 0; right: 0; border-bottom: 2px solid; border-right: 2px solid; border-radius: 0 0 8px 0; }
-.scan-frame.active .corner { border-color: var(--violet-500); }
-.scan-frame.locked .corner { border-color: var(--violet-300); }
+.scan-frame.active .corner { border-color: var(--accent-500); }
+.scan-frame.locked .corner { border-color: var(--accent-300); }
 .scan-frame .scanline {
   position: absolute;
   left: 8px;
   right: 8px;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--violet-400), transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-400), transparent);
   animation: scanline 2.4s ease-in-out infinite;
   opacity: 0.85;
   pointer-events: none;
@@ -573,7 +559,7 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .item-row.land-in { animation: land-in 0.5s var(--ease-spring) both, landed-flash 1.1s ease-out 0.15s both; }
 .item-row .meta { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: var(--font-mono); }
-.item-row a { color: var(--violet-300); word-break: break-all; text-decoration: none; }
+.item-row a { color: var(--accent-300); word-break: break-all; text-decoration: none; }
 .item-row a:hover { text-decoration: underline; }
 .item-row img { max-width: 100%; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--line); }
 
@@ -597,7 +583,7 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .icon-btn svg { width: 14px; height: 14px; }
 .icon-btn:hover { border-color: var(--line-strong); color: var(--fg); background: var(--surface-hover); }
-.icon-btn.copied { border-color: var(--violet-400); color: var(--violet-300); }
+.icon-btn.copied { border-color: var(--accent-400); color: var(--accent-300); }
 .item-row .download-btn { margin-top: 8px; }
 
 /* Phase 2d: generic file + voice memo received items */
@@ -611,7 +597,7 @@ button.link:hover { color: var(--fg); background: none; }
 /* -- hold-to-record voice button: four states (idle/arming/recording/sent)
    driven purely by the classes setRecordState() already toggles in app.js.
    Idle deliberately stays a quiet, bordered "secondary" button (like the
-   other toggle boxes on this screen) rather than the vivid beam-gradient
+   other toggle boxes on this screen) rather than the vivid accent fill
    used for actual Send buttons -- that gradient is saved for the two
    states that actually matter (recording = live, sent = landed), so the
    jump into "hot" color when you start recording reads as a real state
@@ -682,16 +668,16 @@ button.link:hover { color: var(--fg); background: none; }
   border-color: var(--line-strong);
 }
 .record-btn:not(.arming):not(.recording):not(.sent):hover {
-  border-color: var(--violet-500);
+  border-color: var(--accent-500);
   background: var(--surface-hover);
 }
 
 /* arming -- press registered, not yet recording. Snappy (the whole window
    is <=350ms): icon snaps up in size and a quick single ring-flash previews
-   the violet "live" color about to arrive, so a press that's released
+   the red "live" color about to arrive, so a press that's released
    before recording starts still felt like *something* happened. */
 .record-btn.arming {
-  border-color: var(--violet-500);
+  border-color: var(--accent-500);
   color: var(--fg);
 }
 .record-btn.arming .mic-icon { transform: scale(1.22); }
@@ -699,16 +685,18 @@ button.link:hover { color: var(--fg); background: none; }
   animation: record-arm-flash 0.3s var(--ease-out-expo) both;
 }
 @keyframes record-arm-flash {
-  0% { box-shadow: 0 0 0 0 rgba(181, 134, 255, 0.6); }
-  100% { box-shadow: 0 0 0 7px rgba(181, 134, 255, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(232, 128, 127, 0.6); }
+  100% { box-shadow: 0 0 0 7px rgba(232, 128, 127, 0); }
 }
 
-/* recording -- unmistakably live: full beam-gradient fill, a continuously
-   pulsing outward ring, and the mic glyph swapped for a tiny animated
-   waveform, so there is no ambiguity about whether it's still capturing. */
+/* recording -- unmistakably live: full accent-red fill (conveniently the
+   same "recording" convention most camera/call apps already use), a
+   continuously pulsing outward ring, and the mic glyph swapped for a tiny
+   animated waveform, so there is no ambiguity about whether it's still
+   capturing. */
 .record-btn.recording {
   border-color: transparent;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   color: #fff;
   animation: record-live-glow 1.3s ease-in-out infinite;
 }
@@ -719,22 +707,22 @@ button.link:hover { color: var(--fg); background: none; }
 .record-btn.recording .record-waves { display: flex; }
 .record-btn.recording .wave-bar { animation: wave-breathe 0.9s ease-in-out infinite; }
 @keyframes record-live-glow {
-  0%, 100% { box-shadow: 0 6px 20px -8px rgba(114, 56, 245, 0.65); }
-  50% { box-shadow: 0 6px 24px -6px rgba(150, 89, 248, 0.9); }
+  0%, 100% { box-shadow: 0 6px 20px -8px rgba(179, 13, 13, 0.65); }
+  50% { box-shadow: 0 6px 24px -6px rgba(209, 58, 58, 0.9); }
 }
 @keyframes record-live-ring {
-  0% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0.55); }
-  70% { box-shadow: 0 0 0 10px rgba(150, 89, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(209, 58, 58, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(209, 58, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(209, 58, 58, 0); }
 }
 
 /* sent -- brief "landed" confirmation: reuses the same pop/ring language
-   as .pair-success-badge and the near-white --violet-50 the top-of-file
+   as .pair-success-badge and the near-white --accent-50 the top-of-file
    comment reserves for the instant something actually lands, so this
    reads as the same confirmation vocabulary used elsewhere in the app. */
 .record-btn.sent {
   border-color: transparent;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   color: #fff;
 }
 .record-btn.sent .mic-icon { opacity: 0; transform: scale(0.5); }
@@ -745,8 +733,8 @@ button.link:hover { color: var(--fg); background: none; }
 }
 .record-btn.sent .record-ring { animation: record-sent-ring 0.7s ease-out; }
 @keyframes record-sent-ring {
-  0% { box-shadow: 0 0 0 0 rgba(242, 214, 255, 0.65); }
-  100% { box-shadow: 0 0 0 10px rgba(242, 214, 255, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(255, 220, 220, 0.65); }
+  100% { box-shadow: 0 0 0 10px rgba(255, 220, 220, 0); }
 }
 
 /* Reduced motion: infinite/looping animations above still get cut down to
@@ -755,11 +743,11 @@ button.link:hover { color: var(--fg); background: none; }
    the waveform bars frozen at mismatched heights. Give each state a static
    equivalent instead so the meaning still reads without any motion. */
 @media (prefers-reduced-motion: reduce) {
-  .record-btn.arming .record-ring { box-shadow: 0 0 0 4px rgba(181, 134, 255, 0.45); }
-  .record-btn.recording { box-shadow: 0 6px 20px -8px rgba(114, 56, 245, 0.65); }
-  .record-btn.recording .record-ring { box-shadow: 0 0 0 4px rgba(150, 89, 248, 0.5); }
+  .record-btn.arming .record-ring { box-shadow: 0 0 0 4px rgba(232, 128, 127, 0.45); }
+  .record-btn.recording { box-shadow: 0 6px 20px -8px rgba(179, 13, 13, 0.65); }
+  .record-btn.recording .record-ring { box-shadow: 0 0 0 4px rgba(209, 58, 58, 0.5); }
   .record-btn.recording .wave-bar { animation: none !important; height: 75%; }
-  .record-btn.sent .record-ring { box-shadow: 0 0 0 4px rgba(242, 214, 255, 0.5); }
+  .record-btn.sent .record-ring { box-shadow: 0 0 0 4px rgba(255, 220, 220, 0.5); }
 }
 
 /* -- tabs, with a sliding indicator instead of an instant color swap -------- */
@@ -792,18 +780,16 @@ button.link:hover { color: var(--fg); background: none; }
   height: 6px;
   margin-left: 5px;
   border-radius: 50%;
-  background: var(--violet-400);
-  box-shadow: 0 0 6px -1px var(--violet-400);
+  background: var(--accent-400);
   vertical-align: middle;
 }
 .tab-indicator {
   position: absolute;
   bottom: -1px;
   height: 2px;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   border-radius: 2px;
   transition: left 0.32s var(--ease-out-expo), width 0.32s var(--ease-out-expo);
-  box-shadow: 0 0 10px -1px var(--violet-500);
 }
 /* -- landing screen: the secondary "join with a code" path is collapsed
    behind this link so a first-time visitor sees one button, not a form
@@ -874,7 +860,7 @@ button.link:hover { color: var(--fg); background: none; }
   cursor: pointer;
   transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
 }
-.text-toggle-box:hover { border-color: var(--violet-500); color: var(--fg); background: var(--surface-hover); }
+.text-toggle-box:hover { border-color: var(--accent-500); color: var(--fg); background: var(--surface-hover); }
 
 /* UI-only paid-plan gate (file/voice sending). Unlocked, .locked-toggle is
    absent and this collapses to nothing extra -- the lock icon and badge
@@ -889,7 +875,7 @@ button.link:hover { color: var(--fg); background: none; }
   color: var(--muted-2);
   border-color: var(--line);
 }
-/* Hover normally previews "this is about to do something" (violet border +
+/* Hover normally previews "this is about to do something" (red border +
    brighter text); locked, the primary click genuinely does nothing, so the
    hover state stays inert instead of promising an action that won't happen. */
 .text-toggle-box.locked-toggle:hover {
@@ -927,7 +913,7 @@ button.link:hover { color: var(--fg); background: none; }
   color: var(--muted-2);
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(114, 56, 245, 0.06);
+  background: rgba(179, 13, 13, 0.06);
 }
 
 /* -- pairing success: a full-page beat of confirmation the instant a
@@ -960,12 +946,12 @@ button.link:hover { color: var(--fg); background: none; }
   width: 76px;
   height: 76px;
   border-radius: 50%;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: 0 0 0 0 rgba(114, 56, 245, 0.55);
+  box-shadow: 0 0 0 0 rgba(179, 13, 13, 0.55);
   transform: scale(0.4);
   opacity: 0;
 }
@@ -979,8 +965,8 @@ button.link:hover { color: var(--fg); background: none; }
   100% { transform: scale(1); opacity: 1; }
 }
 @keyframes pair-badge-ring {
-  0% { box-shadow: 0 0 0 0 rgba(114, 56, 245, 0.55); }
-  100% { box-shadow: 0 0 0 22px rgba(114, 56, 245, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(179, 13, 13, 0.55); }
+  100% { box-shadow: 0 0 0 22px rgba(179, 13, 13, 0); }
 }
 .hint-text { font-size: 12px; color: var(--muted); text-align: center; margin: 0 0 10px; line-height: 1.5; }
 
@@ -995,8 +981,8 @@ button.link:hover { color: var(--fg); background: none; }
   margin-bottom: 8px;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
-.drop-zone:hover, .drop-zone.drag-active { border-color: var(--violet-500); background: rgba(114, 56, 245, 0.06); }
-.drop-zone:focus-visible { outline: 2px solid var(--violet-400); outline-offset: 2px; }
+.drop-zone:hover, .drop-zone.drag-active { border-color: var(--accent-500); background: rgba(179, 13, 13, 0.06); }
+.drop-zone:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 2px; }
 #drop-zone-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #drop-zone-empty svg { width: 28px; height: 28px; color: var(--muted); }
 #drop-zone-empty p { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; max-width: 220px; }
