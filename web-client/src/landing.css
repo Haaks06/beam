@@ -2,12 +2,18 @@
    Beam — marketing homepage (landing.html)
 
    This is a standalone stylesheet for the marketing page only — it does not
-   touch styles.css (owned by the pairing app) but reuses the same design
-   tokens sampled from public/beam-logo.jpg, so the two feel like one
-   product. See styles.css for the canonical token comment; kept in sync by
-   hand since this file intentionally does not @import the app stylesheet
-   (the app stylesheet's base rules — e.g. body max-width: 440px — are built
-   for a single-purpose utility screen, not a full-width marketing page).
+   touch styles.css (owned by the pairing app) and does not @import it (the
+   app stylesheet's base rules — e.g. body max-width: 440px — are built for
+   a single-purpose utility screen, not a full-width marketing page).
+
+   Accent color is a flat "signal blue" scale (--accent-*), chosen
+   deliberately over the product mark's violet: cooler/calmer reads as
+   trustworthy for a privacy-first product in a way purple (now pattern-
+   matched to generic AI products) doesn't. This intentionally diverges
+   from styles.css's violet scale, sampled from public/beam-logo.jpg — the
+   marketing site and the pairing app are no longer color-matched 1:1; the
+   logo mark itself is left as-is (raster asset, out of scope for a CSS
+   pass).
    ========================================================================== */
 
 @font-face {
@@ -35,17 +41,14 @@
      clear 4.5:1. */
   --muted-2: #7a70ad;
 
-  /* -- beam violet scale, sampled from the mark -- */
-  --violet-50: #f2d6ff;
-  --violet-300: #b586ff;
-  --violet-400: #9659f8;
-  --violet-500: #7238f5;
-  --violet-600: #5d25d4;
-  --violet-700: #401590;
-  --violet-900: #1f0a4a;
-
-  --beam-gradient: linear-gradient(115deg, var(--violet-400), var(--violet-500) 55%, var(--violet-600));
-  --beam-gradient-soft: linear-gradient(90deg, var(--violet-50), var(--violet-400) 30%, transparent 85%);
+  /* -- signal blue scale: flat accent, no gradient stops -- */
+  --accent-50: #cdeeff;
+  --accent-300: #6dc3ea;
+  --accent-400: #3fa0d9;
+  --accent-500: #14739f;
+  --accent-600: #0f5a7d;
+  --accent-700: #0b4560;
+  --accent-900: #041824;
 
   --error: #ff5470;
 
@@ -78,10 +81,6 @@
 
 /* -- keyframes ------------------------------------------------------------ */
 
-@keyframes sweep {
-  0% { transform: translateX(-160%) skewX(-14deg); }
-  100% { transform: translateX(260%) skewX(-14deg); }
-}
 @keyframes scanline {
   0% { transform: translateY(-100%); opacity: 0; }
   12% { opacity: 1; }
@@ -95,9 +94,9 @@
   100% { left: 106%; opacity: 0; transform: translateY(-50%) scale(0.6); }
 }
 @keyframes beam-pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0.5); }
-  70% { box-shadow: 0 0 0 12px rgba(150, 89, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(150, 89, 248, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(20, 115, 159, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(20, 115, 159, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(20, 115, 159, 0); }
 }
 @keyframes reveal-up {
   from { opacity: 0; transform: translateY(18px); }
@@ -152,7 +151,7 @@ svg { display: block; }
   top: -60px;
   left: 12px;
   z-index: 200;
-  background: var(--violet-500);
+  background: var(--accent-500);
   color: #fff;
   padding: 10px 16px;
   border-radius: var(--radius-sm);
@@ -162,7 +161,7 @@ svg { display: block; }
 }
 .skip-link:focus { top: 12px; }
 
-:focus-visible { outline: 2px solid var(--violet-400); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 2px; }
 
 /* Ambient brand backdrop, echoing the app's own body::before/::after but
    scaled up for a full-width page instead of a 440px utility screen. */
@@ -207,7 +206,7 @@ svg { display: block; }
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
-  color: var(--violet-300);
+  color: var(--accent-300);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   margin: 0 0 16px;
@@ -217,8 +216,8 @@ svg { display: block; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--violet-400);
-  box-shadow: 0 0 0 0 rgba(150, 89, 248, 0.6);
+  background: var(--accent-400);
+  box-shadow: 0 0 0 0 rgba(20, 115, 159, 0.6);
   animation: beam-pulse-ring 2.2s ease-out infinite;
 }
 
@@ -255,23 +254,12 @@ svg { display: block; }
 .btn:active { transform: scale(0.98); }
 
 .btn-primary {
-  position: relative;
-  overflow: hidden;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 10px 30px -10px rgba(114, 56, 245, 0.7);
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.55);
 }
-.btn-primary::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
-  transform: translateX(-160%) skewX(-14deg);
-  pointer-events: none;
-}
-.btn-primary:hover { border-color: transparent; background: var(--beam-gradient); }
-.btn-primary:hover::after { animation: sweep 0.9s var(--ease-out-expo); }
+.btn-primary:hover { border-color: transparent; background: var(--accent-600); }
 
 .btn-sm { padding: 9px 16px; font-size: 13px; min-height: 36px; }
 
@@ -318,7 +306,6 @@ svg { display: block; }
 .nav-brand img {
   width: 30px; height: 30px;
   border-radius: 8px;
-  filter: drop-shadow(0 0 10px rgba(114, 56, 245, 0.55));
 }
 .nav-brand span { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
 
@@ -394,11 +381,7 @@ svg { display: block; }
   letter-spacing: -0.02em;
 }
 .hero h1 .grad {
-  background: var(--beam-gradient-soft);
-  background: linear-gradient(115deg, var(--violet-50), var(--violet-300) 45%, var(--violet-500));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent-400);
 }
 .hero-sub {
   margin: 22px auto 0;
@@ -438,7 +421,7 @@ svg { display: block; }
 .device-frame .corner {
   position: absolute;
   width: 16px; height: 16px;
-  border-color: var(--violet-500);
+  border-color: var(--accent-500);
   opacity: 0.85;
 }
 .device-frame .corner.tl { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; border-radius: 10px 0 0 0; }
@@ -454,7 +437,7 @@ svg { display: block; }
 }
 .device-phone .device-notch { width: 34%; height: 5px; border-radius: 3px; background: var(--line-strong); margin: 0 auto 10px; }
 .device-phone .device-content { display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
-.device-phone .device-content .icon { width: 26px; height: 26px; color: var(--violet-300); }
+.device-phone .device-content .icon { width: 26px; height: 26px; color: var(--accent-300); }
 .device-phone .device-content span { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; }
 
 .device-pc {
@@ -463,7 +446,7 @@ svg { display: block; }
   animation-delay: 0.4s;
 }
 .device-pc .device-content { display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
-.device-pc .device-content .icon { width: 30px; height: 30px; color: var(--violet-300); }
+.device-pc .device-content .icon { width: 30px; height: 30px; color: var(--accent-300); }
 .device-pc .device-content span { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; }
 .device-stand { width: 30%; height: 8px; margin: 8px auto 0; border-radius: 0 0 4px 4px; background: var(--line); }
 
@@ -478,7 +461,7 @@ svg { display: block; }
   width: 100%;
   height: 2px;
   border-radius: 2px;
-  background-image: linear-gradient(90deg, var(--violet-500) 50%, transparent 50%);
+  background-image: linear-gradient(90deg, var(--accent-500) 50%, transparent 50%);
   background-size: 16px 2px;
   background-repeat: repeat-x;
   opacity: 0.55;
@@ -490,8 +473,8 @@ svg { display: block; }
   left: -6%;
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: var(--violet-50);
-  box-shadow: 0 0 16px 4px rgba(181, 134, 255, 0.85), 0 0 3px 1px #fff;
+  background: var(--accent-50);
+  box-shadow: 0 0 6px 2px rgba(63, 160, 217, 0.6), 0 0 2px 1px #fff;
   transform: translateY(-50%);
   animation: photon-travel 2.6s var(--ease-out-expo) infinite;
 }
@@ -503,7 +486,7 @@ svg { display: block; }
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: var(--violet-300);
+  color: var(--accent-300);
   white-space: nowrap;
 }
 
@@ -552,9 +535,9 @@ svg { display: block; }
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: rgba(114, 56, 245, 0.12);
-  color: var(--violet-300);
-  border: 1px solid rgba(114, 56, 245, 0.25);
+  background: rgba(20, 115, 159, 0.12);
+  color: var(--accent-300);
+  border: 1px solid rgba(20, 115, 159, 0.25);
 }
 
 /* -- alternating feature sections ------------------------------------------ */
@@ -573,7 +556,7 @@ svg { display: block; }
 .feature-copy p { color: var(--muted); font-size: 15.5px; line-height: 1.7; }
 .feature-list { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
 .feature-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 14.5px; color: var(--fg); }
-.feature-list .icon { color: var(--violet-400); margin-top: 2px; width: 18px; height: 18px; }
+.feature-list .icon { color: var(--accent-400); margin-top: 2px; width: 18px; height: 18px; }
 .feature-copy .btn-arrow { margin-top: 22px; }
 
 .feature-visual {
@@ -611,10 +594,9 @@ svg { display: block; }
 .timer-ring circle { fill: none; stroke-width: 6; }
 .timer-ring .track { stroke: var(--line); }
 .timer-ring .progress {
-  stroke: var(--violet-400);
+  stroke: var(--accent-400);
   stroke-linecap: round;
   stroke-dasharray: 440;
-  filter: drop-shadow(0 0 6px rgba(150, 89, 248, 0.7));
 }
 .timer-ring-label { text-align: center; }
 .timer-ring-label .time { font-family: var(--font-mono); font-size: 26px; font-weight: 600; color: var(--fg); }
@@ -648,7 +630,7 @@ svg { display: block; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--violet-300);
+  color: var(--accent-300);
 }
 .reach-globe::before, .reach-globe::after {
   content: '';
@@ -666,11 +648,11 @@ svg { display: block; }
 .shield-badge {
   width: 96px; height: 96px;
   border-radius: 28px;
-  background: var(--beam-gradient);
+  background: var(--accent-500);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 16px 40px -14px rgba(114, 56, 245, 0.7);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.5);
 }
 .shield-badge .icon { width: 44px; height: 44px; color: #fff; stroke-width: 1.75; }
 .shield-caption { display: flex; gap: 18px; }
@@ -710,14 +692,6 @@ svg { display: block; }
   text-align: center;
   position: relative;
   overflow: hidden;
-}
-.cta-band::before {
-  content: '';
-  position: absolute;
-  inset: -30% -10% auto auto;
-  width: 420px; height: 420px;
-  background: radial-gradient(circle, rgba(114, 56, 245, 0.35), transparent 70%);
-  pointer-events: none;
 }
 .cta-band h2 { font-size: clamp(26px, 3.6vw, 40px); margin-bottom: 14px; }
 .cta-band p { color: var(--muted); font-size: 15.5px; max-width: 460px; margin: 0 auto 30px; }
@@ -870,7 +844,7 @@ svg { display: block; }
 .walk-num {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--violet-300);
+  color: var(--accent-300);
   letter-spacing: 0.1em;
 }
 .walk-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; }
@@ -901,7 +875,7 @@ svg { display: block; }
 
 @keyframes walk-dot-active {
   0%, 100% { background: var(--line-strong); transform: scale(1); }
-  5%, 28% { background: var(--violet-400); transform: scale(1.35); }
+  5%, 28% { background: var(--accent-400); transform: scale(1.35); }
   33% { background: var(--line-strong); transform: scale(1); }
 }
 
@@ -918,7 +892,7 @@ svg { display: block; }
   }
   .walk-step:last-child { margin-bottom: 0; }
   .walk-dot { animation: none; }
-  .walk-dot-1 { background: var(--violet-400); }
+  .walk-dot-1 { background: var(--accent-400); }
 }
 
 /* -- platforms grid: drop to 2, then 1 column once the Windows card is
