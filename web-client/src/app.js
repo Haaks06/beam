@@ -343,9 +343,41 @@ function teardownActiveSession() {
   clearReceivedItems().catch(() => {});
 }
 
+// Best-effort notice to the other device that this device is leaving the
+// session right now (see the 'unpaired' signal listener in
+// connectReceivedFeed below) -- over the same /signal channel used for
+// WebRTC setup, just a distinct type. Only fires when this device was
+// actually paired (expiresAt set and still in the future); on the
+// invite/start screens there's no partner to tell, and on an
+// already-expired session the other side already knows on its own.
+// Fire-and-forget: a 404 (other device already gone) or network hiccup
+// just means the other side finds out from its own countdown instead,
+// same as before this existed.
+function notifyOtherDeviceUnpaired() {
+  const { relayUrl, token, expiresAt } = loadConfig();
+  if (!relayUrl || !token || !expiresAt || expiresAt <= Date.now()) return;
+  fetch(`${relayUrl}/signal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ type: 'unpaired' }),
+  }).catch(() => {});
+}
+
 function enterStartState() {
+  notifyOtherDeviceUnpaired();
   teardownActiveSession();
   showOnly('start');
+}
+
+// Reached when the *other* device tore down the session first (see
+// notifyOtherDeviceUnpaired above) -- unlike enterStartState(), this device
+// didn't choose to leave, so it needs an explicit reason on screen rather
+// than silently landing back on Connect.
+function enterUnpairedState() {
+  teardownActiveSession();
+  clearConfig();
+  showOnly('start');
+  setStatus('Unpaired — start a new session.', 'error');
 }
 
 // A brief, unmissable confirmation the instant a pairing completes — shown
@@ -621,6 +653,7 @@ function refreshState() {
 // always be a brand-new pairing, never a session that happens to already
 // be live with some other device.
 async function startNewPairing() {
+  notifyOtherDeviceUnpaired();
   teardownActiveSession();
   const relayUrl = (relayUrlInput.value.trim() || window.location.origin).replace(/\/+$/, '');
   connectBtn.classList.add('sending');
@@ -1379,7 +1412,15 @@ function connectReceivedFeed() {
   // the generic unnamed item message above, exactly so the two can never
   // be confused for one another.
   eventSource.addEventListener('signal', (event) => {
-    p2pController?.handleSignal(JSON.parse(event.data));
+    const data = JSON.parse(event.data);
+    // The other device tore down its session (see notifyOtherDeviceUnpaired)
+    // -- distinct from every other signal type, which are all WebRTC setup
+    // messages meant for p2pController, not this device's own UI state.
+    if (data.type === 'unpaired') {
+      enterUnpairedState();
+      return;
+    }
+    p2pController?.handleSignal(data);
   });
 
   clearInterval(sseWatchdog);

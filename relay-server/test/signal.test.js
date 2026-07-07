@@ -117,6 +117,20 @@ test('POST /signal 202s and actually delivers through the real route + auth laye
   assert.match(otherConn.writes[0], /"type":"ice-candidate"/);
 });
 
+test('an unpaired signal (no payload) delivers to the other device', async () => {
+  const { ownerToken, inboxId } = await pairedDevices();
+  const otherConn = fakeRes();
+  sse.subscribe(inboxId, 444, otherConn);
+
+  await request(app)
+    .post('/signal')
+    .set('Authorization', `Bearer ${ownerToken}`)
+    .send({ type: 'unpaired' })
+    .expect(202);
+
+  assert.match(otherConn.writes[0], /"type":"unpaired"/);
+});
+
 test('a pubkey signal round-trips its payload untouched', async () => {
   const { ownerToken, inboxId } = await pairedDevices();
   const otherConn = fakeRes();

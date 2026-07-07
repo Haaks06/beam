@@ -7,7 +7,7 @@ const sse = require('../lib/sse');
 const router = express.Router();
 router.use(requireToken);
 
-const SIGNAL_TYPES = new Set(['offer', 'answer', 'ice-candidate', 'pubkey']);
+const SIGNAL_TYPES = new Set(['offer', 'answer', 'ice-candidate', 'pubkey', 'unpaired']);
 
 // ICE candidate exchange during connection setup is chatty — several
 // candidates per attempt, from both sides — so this gets a much more
@@ -26,7 +26,7 @@ const signalLimiter = rateLimit({ windowMs: 60 * 1000, limit: 300, handler: rate
 router.post('/', signalLimiter, (req, res) => {
   const { type, payload } = req.body || {};
   if (!type || !SIGNAL_TYPES.has(type)) {
-    return res.status(400).json({ error: 'type must be one of: offer, answer, ice-candidate, pubkey' });
+    return res.status(400).json({ error: 'type must be one of: offer, answer, ice-candidate, pubkey, unpaired' });
   }
 
   const delivered = sse.sendSignal(req.device.inbox_id, req.device.id, { type, payload });
