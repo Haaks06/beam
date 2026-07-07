@@ -271,7 +271,25 @@ app.on('before-quit', () => {
 // same OS-level call and keep the other surface's UI in sync, rather than
 // each maintaining its own notion of the current state.
 function setAutoLaunch(enabled) {
-  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });
+  // Windows Store/MSIX builds: verified against Electron's own docs and by
+  // checking this machine's registry after toggling it in a sideloaded
+  // build -- app.setLoginItemSettings() "will return true for all calls
+  // but the registry key it sets won't be accessible by other
+  // applications," i.e. it silently no-ops instead of actually
+  // registering a startup entry Windows Settings/Task Manager can see (no
+  // entry ever appeared under HKCU's StartupApproved\StartupTasks here).
+  // The real MSIX mechanism is the manifest's windows.startupTask
+  // extension (see electron-builder.js's addAutoLaunchExtension) driven
+  // through the WinRT StartupTask API, which Electron doesn't project
+  // natively -- not implemented here. Skipping the doomed OS call under
+  // process.windowsStore and telling the user directly beats leaving a
+  // toggle that looks like it worked but silently does nothing -- see
+  // STORE.md for the known-gap writeup.
+  if (app.isPackaged && !process.windowsStore) {
+    app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });
+  } else if (process.windowsStore) {
+    notify('Start at login not yet available', 'This isn’t wired up in the Store version yet -- coming in a future update.');
+  }
   trayHandle?.setAutoLaunch(enabled);
 }
 
@@ -393,8 +411,13 @@ app.whenReady().then(() => {
   // whatever setLoginItemSettings last set at the OS level, so doing this
   // unconditionally on every launch would silently re-enable it the moment
   // someone turns it off via the tray's own toggle below.
+  // Skipped entirely under process.windowsStore -- see setAutoLaunch()'s
+  // comment for why the underlying OS call is a silent no-op there. Still
+  // writing the marker would just permanently suppress a feature that
+  // never actually ran, for no benefit; not writing it costs nothing since
+  // this whole block is skipped again on every future launch anyway.
   const autoLaunchMarker = path.join(app.getPath('userData'), 'autolaunch-initialized');
-  if (app.isPackaged && !fs.existsSync(autoLaunchMarker)) {
+  if (app.isPackaged && !process.windowsStore && !fs.existsSync(autoLaunchMarker)) {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
     fs.mkdirSync(path.dirname(autoLaunchMarker), { recursive: true });
     fs.writeFileSync(autoLaunchMarker, '');
@@ -404,8 +427,12 @@ app.whenReady().then(() => {
   // silently no-ops in dev. Uses the GitHub Releases provider (see
   // package.json's build.publish) since this repo is public -- errors are
   // logged, not surfaced to the user, since a failed update check shouldn't
-  // read as the app itself being broken.
-  if (app.isPackaged) {
+  // read as the app itself being broken. Never runs under
+  // process.windowsStore: Store apps must update through the Store, not a
+  // self-fetched installer -- besides being against Store policy, the
+  // GitHub feed only ever publishes the nsis .exe, which wouldn't even be
+  // a valid update mechanism for an MSIX install.
+  if (app.isPackaged && !process.windowsStore) {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
       console.error('update check failed', err);
     });
