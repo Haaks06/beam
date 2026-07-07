@@ -78,14 +78,21 @@ module.exports = async function () {
     // Real values, from Partner Center's Product identity page (app
     // "Beamlot" reserved there) -- Package/Identity/Name,
     // Package/Identity/Publisher, and Package/Properties/PublisherDisplayName
-    // respectively. displayName stays "Beam" (the user-facing name shown in
-    // the Start menu/taskbar/window title) -- separate from identityName,
-    // which is just Partner Center's internal package identity and never
-    // shown to users.
+    // respectively.
     identityName: 'Beamlot.Beamlot',
     publisher: 'CN=A0E9C038-077F-4423-82A7-D51710D8E4BF',
     publisherDisplayName: 'Beamlot',
-    displayName: 'Beam',
+    // Store submission rejected "Beam" here: Package/Properties/DisplayName
+    // must match a name actually reserved under this account, and only
+    // "Beamlot" is (confirmed via the submission's own validation error).
+    // "Beam" was presumably already taken by another Store app. So the
+    // Start menu tile/taskbar/Store listing show "Beamlot" specifically —
+    // everywhere else (the running window's title, tray tooltip, Windows
+    // notifications, the website) still says "Beam", set independently via
+    // main.js's app.setName('Beam') and BrowserWindow title. A deliberate
+    // tradeoff, not an oversight -- reserving "Beam" itself as an
+    // additional name was the alternative and wasn't pursued.
+    displayName: 'Beamlot',
     backgroundColor: '#630000', // matches the site's maroon signal accent
     // Adds the windows.startupTask manifest extension so "start at login"
     // has an MSIX-native mechanism to hook into -- see main.js's
