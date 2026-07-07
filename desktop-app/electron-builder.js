@@ -75,24 +75,26 @@ module.exports = async function () {
   //     incompatible (Store apps must update through the Store) and is
   //     disabled under process.windowsStore -- see main.js.
   const appx = {
-    // Real values, from Partner Center's Product identity page (app
-    // "Beamlot" reserved there) -- Package/Identity/Name,
-    // Package/Identity/Publisher, and Package/Properties/PublisherDisplayName
-    // respectively.
+    // Real values, from Partner Center's Product identity page. Three
+    // distinct things, easy to conflate (an earlier version of this file
+    // did): identityName is the internal package identity (alphanumeric +
+    // dot/dash only, which is exactly why it can't just be the product's
+    // real name below -- em dashes and spaces aren't valid there), and
+    // publisherDisplayName is the *publisher's* name ("by Beamlot"), not
+    // the app's. Neither is what Package/Properties/DisplayName needs to
+    // match.
     identityName: 'Beamlot.Beamlot',
     publisher: 'CN=A0E9C038-077F-4423-82A7-D51710D8E4BF',
     publisherDisplayName: 'Beamlot',
-    // Store submission rejected "Beam" here: Package/Properties/DisplayName
-    // must match a name actually reserved under this account, and only
-    // "Beamlot" is (confirmed via the submission's own validation error).
-    // "Beam" was presumably already taken by another Store app. So the
-    // Start menu tile/taskbar/Store listing show "Beamlot" specifically —
-    // everywhere else (the running window's title, tray tooltip, Windows
-    // notifications, the website) still says "Beam", set independently via
-    // main.js's app.setName('Beam') and BrowserWindow title. A deliberate
-    // tradeoff, not an oversight -- reserving "Beam" itself as an
-    // additional name was the alternative and wasn't pursued.
-    displayName: 'Beamlot',
+    // The actual reserved product name (Partner Center's Product identity
+    // page title itself reads "Beam — Send Anywhere | Product identity") --
+    // this is what Package/Properties/DisplayName must match, confirmed
+    // after an earlier fix here ("Beamlot") turned out to be a
+    // misdiagnosis: it happened to clear the same generic Store validation
+    // error without actually being the reserved product name. Character-
+    // for-character match required, including the em dash (—, U+2014, not
+    // a hyphen).
+    displayName: 'Beam — Send Anywhere',
     backgroundColor: '#630000', // matches the site's maroon signal accent
     // Adds the windows.startupTask manifest extension so "start at login"
     // has an MSIX-native mechanism to hook into -- see main.js's
