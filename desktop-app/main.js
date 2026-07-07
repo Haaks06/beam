@@ -8,6 +8,18 @@ const { autoUpdater } = require('electron-updater');
 // but the product Electron reports to Windows should be the real product name.
 app.setName('Beam');
 
+// Without this, Windows has no AppUserModelID to group this app's windows/
+// notifications/jump-list under, so it falls back to deriving one from the
+// raw Electron executable identity instead -- the visible symptom is
+// notification toasts and Windows' own notification settings showing
+// something like "app.electron.beam" rather than "Beam". Must run before
+// any window or Notification is created (both register against whatever
+// AUMI is current at the time), and must match electron-builder.js's
+// `appId` ('com.beam.desktop') -- that's what the NSIS installer writes
+// into the Start Menu shortcut's own AUMI, so a mismatch here would still
+// show the wrong grouping/identity for anyone running from a shortcut.
+app.setAppUserModelId('com.beam.desktop');
+
 // This app already auto-launches at login (see setLoginItemSettings below),
 // so a second launch is the common case, not the exception -- Windows
 // Explorer's "Beam this file" context menu (build/installer.nsh) spawns
