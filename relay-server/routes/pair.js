@@ -154,15 +154,7 @@ router.post('/claim', mutationLimiter, (req, res) => {
     markPaired.run(now, expiresAt, pairing.inbox_id);
   }
 
-  // req.ip already respects index.js's `trust proxy` setting, so this is
-  // the real client address (from X-Forwarded-For) rather than the
-  // reverse proxy's own — same reasoning as the QR/pairing URL relying on
-  // X-Forwarded-Proto. Purely informational: never written to the DB,
-  // just computed fresh per-request and handed back so each device can
-  // learn its own apparent address. Exchanging that with the other device
-  // to actually compare and decide on a local-network fast-path (Phase 2b)
-  // happens over the already-established /signal channel, not here.
-  res.json({ token, expiresAt, remoteAddr: req.ip });
+  res.json({ token, expiresAt });
 });
 
 // GET /pair/status/:code — lets the initiating device (usually the desktop
@@ -179,10 +171,7 @@ router.get('/status/:code', statusLimiter, (req, res) => {
     const inbox = getInbox.get(pairing.inbox_id);
     expiresAt = inbox ? inbox.expires_at : null;
   }
-  // Same remoteAddr hint as /pair/claim above, for the initiating device —
-  // it never calls /pair/claim itself, so this (already-polled) endpoint is
-  // how it learns its own apparent address instead.
-  res.json({ status: pairing.status, expiresAt, remoteAddr: req.ip });
+  res.json({ status: pairing.status, expiresAt });
 });
 
 module.exports = router;

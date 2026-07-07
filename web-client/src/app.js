@@ -181,43 +181,21 @@ let countdownTimer = null;
 // down in enterStartState()/enterEndedState() — never carried over between
 // pairings, same lifecycle as eventSource itself.
 let p2pController = null;
-// Phase 2b: this device's own apparent address, as last reported by
-// /pair/claim or /pair/status's remoteAddr (see relay-server/routes/
-// pair.js) — captured wherever pairing actually completes, then handed to
-// p2p.js so it can compare against the other device's and label a direct
-// connection "same network" purely as an informational signal. Comparing
-// remoteAddr doesn't change any connection logic itself — a real local
-// fast-path already falls out of standard ICE candidate prioritization,
-// which prefers lower-latency host candidates over STUN-reflexive ones on
-// its own.
-// Persisted alongside lastIntent for the same reason: a page reload mid-
-// session shouldn't lose this purely-cosmetic "(same network)" label any
-// more than it should lose the offerer/answerer role.
-let myRemoteAddr = localStorage.getItem('myRemoteAddr') || null;
-function setMyRemoteAddr(addr) {
-  myRemoteAddr = addr;
-  if (addr) localStorage.setItem('myRemoteAddr', addr);
-  else localStorage.removeItem('myRemoteAddr');
-}
 
 function setP2pIndicator(mode) {
   if (!p2pIndicatorEl) return;
   if (mode === 'direct') {
-    // Phase 2b: purely a label -- p2pController.isSameNetwork() reflects
-    // whether both devices' relay-perceived addresses matched, computed
-    // well before the connection itself settles, so it's always available
-    // by the time 'direct' mode actually fires.
-    const sameNetwork = p2pController?.isSameNetwork();
-    // The "(same network)" qualifier is its own element rather than plain
-    // text so a narrow-viewport media query can drop it without touching
-    // the "Direct" part -- see styles.css's max-width:400px block.
+    // Used to also qualify this as "(same network)" by comparing each
+    // device's relay-perceived remoteAddr (see relay-server/routes/pair.js)
+    // -- dropped because that comparison was never actually reliable:
+    // Fly's proxy chain meant req.ip resolved to Fly's own internal
+    // address rather than the real client IP, so two devices on
+    // completely different networks (confirmed: a phone on cellular with
+    // Wi-Fi off) still "matched" and showed the qualifier. A direct P2P
+    // connection can succeed across different networks via NAT traversal
+    // too, so "Direct" alone (no network claim) is accurate either way --
+    // see docs/THREAT_MODEL.md.
     p2pIndicatorEl.textContent = 'Direct';
-    if (sameNetwork) {
-      const qualifier = document.createElement('span');
-      qualifier.className = 'qualifier';
-      qualifier.textContent = ' (same network)';
-      p2pIndicatorEl.appendChild(qualifier);
-    }
     p2pIndicatorEl.title = 'Sending straight to the other device, no relay in the middle';
   } else if (mode === 'relayed') {
     p2pIndicatorEl.textContent = 'Encrypted';
@@ -453,7 +431,6 @@ function enterActiveState() {
     relayUrl: p2pRelayUrl,
     token: p2pToken,
     isOfferer: lastIntent === 'receive',
-    myRemoteAddr,
     onModeChange: setP2pIndicator,
     // Regression fix: the desktop app's native save-to-folder/clipboard/
     // notify pipeline (main.js's `item-received` IPC handler) previously
@@ -595,7 +572,6 @@ function pollInvite(relayUrl, code) {
         inviteFrame?.classList.add('locked');
         const { token } = loadConfig();
         await saveConfig({ relayUrl, token, expiresAt: data.expiresAt });
-        setMyRemoteAddr(data.remoteAddr);
         // This device generated the code and is the one that was waiting —
         // whoever just scanned/typed it did so because THEY want to send
         // something, so the initiator's natural role is Receive.
@@ -694,9 +670,8 @@ async function claimPairingCode(relayUrl, pairingCode) {
     body: JSON.stringify({ pairingCode, label: deviceLabel() }),
   });
   if (!res.ok) throw new Error(await parseErrorMessage(res, 'pairing failed'));
-  const { token, expiresAt, remoteAddr } = await res.json();
+  const { token, expiresAt } = await res.json();
   await saveConfig({ relayUrl, token, expiresAt });
-  setMyRemoteAddr(remoteAddr);
   clearInterval(invitePollTimer);
   setStatus('', null);
   await showPairedAnimation();

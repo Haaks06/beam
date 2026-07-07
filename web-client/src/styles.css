@@ -170,12 +170,6 @@ body {
    — this is a single-purpose utility screen, not a marketing page. */
 @media (max-width: 400px) {
   body { padding: 12px 14px 16px; }
-  /* "Direct (same network)" is the widest thing #session-banner ever shows
-     at once (alongside the countdown and "Start over") -- there's no room
-     for the "(same network)" qualifier on a phone-width screen, so it's
-     dropped down to plain "Direct" here. Desktop/PC keeps the fuller label
-     since there's space for it (see .p2p-indicator .qualifier below). */
-  .p2p-indicator .qualifier { display: none; }
 }
 
 /* Ambient brand backdrop: the actual mark, bled off the top-right corner at

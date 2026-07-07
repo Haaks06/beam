@@ -128,7 +128,7 @@ async function postSignal(relayUrl, token, type, payload) {
   await postSignalOnce(relayUrl, token, type, payload);
 }
 
-export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange, onItem }) {
+export function initP2P({ relayUrl, token, isOfferer, onModeChange, onItem }) {
   let mode = 'connecting';
   let keyPair = null;
   let sharedKey = null;
@@ -137,13 +137,6 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
   let settleTimer = null;
   let pendingCandidates = []; // queued until setRemoteDescription completes
   let remoteDescriptionSet = false;
-  // Phase 2b: purely informational — a real local-network fast-path
-  // already falls out of standard ICE candidate prioritization (host
-  // candidates outrank STUN-reflexive ones on latency alone), so this
-  // never changes any connection logic. It only labels the eventual
-  // "direct" mode more specifically once both sides' apparent addresses
-  // are known to match.
-  let sameNetwork = false;
   let resolveReady;
   const ready = new Promise((resolve) => {
     resolveReady = resolve;
@@ -253,14 +246,6 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     lastProcessedPubKeyB64 = payload.key;
     sharedKey = await deriveSharedKey(keyPair, payload.key);
     resolveSharedKeyReady();
-    // Both remoteAddr values are the relay's own view of each device's
-    // apparent address (see relay-server/routes/pair.js) -- a match is a
-    // reasonable "probably the same network" signal (e.g. both behind the
-    // same home NAT), not a guarantee, but good enough for an
-    // informational label.
-    if (myRemoteAddr && payload.remoteAddr && myRemoteAddr === payload.remoteAddr) {
-      sameNetwork = true;
-    }
     // Re-sending here (not just once from start()) is what actually closes
     // the reload gap: start() only ever sends this device's own pubkey
     // once, retried for a few seconds after *this* instance was created.
@@ -277,7 +262,7 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     // forever once both sides have caught up.
     if (!isFirstKeyThisInstance) {
       const pubKeyB64 = await exportPubKey(keyPair);
-      postSignalRetrying(relayUrl, token, 'pubkey', { key: pubKeyB64, remoteAddr: myRemoteAddr }, Date.now() + CONNECT_TIMEOUT_MS);
+      postSignalRetrying(relayUrl, token, 'pubkey', { key: pubKeyB64 }, Date.now() + CONNECT_TIMEOUT_MS);
     }
   }
 
@@ -327,7 +312,7 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
 
     keyPair = await generateEcdhKeyPair();
     const pubKeyB64 = await exportPubKey(keyPair);
-    postSignalRetrying(relayUrl, token, 'pubkey', { key: pubKeyB64, remoteAddr: myRemoteAddr }, deadline);
+    postSignalRetrying(relayUrl, token, 'pubkey', { key: pubKeyB64 }, deadline);
 
     createPeerConnection();
     settleTimer = setTimeout(() => {
@@ -370,7 +355,6 @@ export function initP2P({ relayUrl, token, isOfferer, myRemoteAddr, onModeChange
     handleSignal,
     teardown,
     getMode: () => mode,
-    isSameNetwork: () => sameNetwork,
     // Resolves once a mode has been settled on -- either 'direct' (the
     // data channel just opened) or 'relayed' (it failed or the connect
     // timeout ran out). Callers should await this before their first send

@@ -40,9 +40,12 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
 
 // Fly (and most PaaS hosts) terminate HTTPS at their edge and forward
 // plain HTTP internally, setting X-Forwarded-Proto/X-Forwarded-Host to
-// tell us the original scheme/host. Needed for req.ip (remoteAddr, see
-// routes/pair.js) and for the redirect below to see the actual hostname
-// the client used, not the proxy's own.
+// tell us the original scheme/host. Needed for the redirect below to see
+// the actual hostname the client used, not the proxy's own. (req.ip used
+// to also depend on this for a "same network" pairing hint, but that was
+// removed -- Fly's own proxy chain meant req.ip resolved to Fly's internal
+// address, not the real client, making the hint unreliable regardless of
+// this setting.)
 app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false }));
