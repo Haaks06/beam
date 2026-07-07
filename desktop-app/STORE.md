@@ -1,5 +1,61 @@
 # Microsoft Store (MSIX) checklist
 
+## Handoff: what's done, what's left for you
+
+Everything up to the point of actually submitting is done and pushed. What's
+left is account-level and can only be done by whoever owns (or will own) the
+Microsoft account this gets published under — there's no way for me to do
+this part.
+
+**What's ready right now:**
+- The MSIX/appx build target, tested end-to-end (tray icon, background
+  listening, auto-save all confirmed working via a real sideload install
+  against the live relay).
+- Store-policy fixes: auto-update disabled under the Store build, "start at
+  login" fails honestly instead of silently.
+- Known limitation documented, not silently shipped: no Explorer right-click
+  "Beam this file" entry in the MSIX build (see below for why).
+- In-package tile assets (real logo, not Microsoft's placeholder art).
+- Store listing copy, category, search terms, and the required 300×300 icon
+  (`store-assets/`).
+
+**What you need to do, in order:**
+1. **Register the Microsoft Partner Center developer account.**
+   [partner.microsoft.com/dashboard/registration](https://partner.microsoft.com/dashboard/registration)
+   — free as of the May 2026 policy change for both individual ($19 fee
+   removed) and company ($99 fee removed) accounts. May ask for identity
+   verification (government ID + selfie for individuals).
+2. **Reserve the app name** ("Beam" or a variant if taken) inside Partner
+   Center. This generates the real `identityName` and `publisher` values on
+   the app's **Product identity** page.
+3. Give me those two values (or edit them yourself) in
+   [`electron-builder.js`](./electron-builder.js) — currently
+   `CHANGEME.BeamDesktopApp` and an unset publisher — then rebuild:
+   `npm run build -w desktop-app -- --win appx --publish never`.
+4. **Take at least one screenshot** of the app (1366×768 or larger PNG) — the
+   one listing asset not already prepared; see
+   `store-assets/STORE-LISTING.md` for exactly why and how.
+5. **Submit** through Partner Center: upload the rebuilt `.appx`, paste in
+   the content from `store-assets/STORE-LISTING.md`, upload
+   `store-assets/StoreListing-AppIcon-300x300.png` and your screenshot(s),
+   fill in the privacy policy URL and support contact (both marked
+   `CHANGEME` in the listing doc — need real values before Partner Center
+   will accept the submission), complete the age-rating questionnaire, and
+   submit for certification.
+6. **Once certification passes and the listing is live**, tell me the Store
+   URL. The website's download page still shows only the direct `.exe` for
+   now — deliberately not touched yet, since there's no real Store link to
+   point it at until this step is done. Making the Store link the primary,
+   recommended download (with the `.exe` demoted to a clearly-labeled
+   "advanced/manual install" option) is the very next thing once you have
+   that URL.
+
+Certification itself typically takes hours to a few days; Microsoft signs
+the package as part of that process, so nothing further is needed from the
+signing side once it's approved.
+
+---
+
 Beam now builds two Windows targets from the same source (see
 [`electron-builder.js`](./electron-builder.js)):
 
