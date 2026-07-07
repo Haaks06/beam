@@ -25,6 +25,10 @@ const DOC_BYTES = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0
 const WEBM_BYTES = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]);
 const OGG_BYTES = Buffer.concat([Buffer.from('OggS'), Buffer.from([0, 0, 0, 0])]);
 const WAV_BYTES = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WAVE')]);
+// ISO base media box: 4-byte size, "ftyp", then the HEIC major brand —
+// what a real iPhone camera capture's HEIC container starts with (see
+// lib/sniffImageType.js).
+const HEIC_BYTES = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheic'), Buffer.from([0, 0, 0, 0])]);
 
 test('uploads a PDF via /items/file and downloads it back', async () => {
   const token = await pairedToken();
@@ -148,6 +152,27 @@ test('the raw-body ingestion path works for /items/voice too', async () => {
     .send(WAV_BYTES)
     .expect(201);
   assert.equal(res.body.type, 'voice');
+});
+
+// Regression test: the raw-body matcher used to only parse the body into a
+// Buffer when Content-Type exactly matched one of ALLOWED_MIME_EXT's keys
+// (e.g. 'image/heic') -- anything else, including a generic
+// 'application/octet-stream' a client sends when it can't map a precise
+// MIME type (real behavior seen from non-browser clients like the iOS
+// Shortcuts app posting a raw file body -- see ios-shortcut/), silently
+// left req.body unparsed and fell through to a confusing "file is
+// required" 400. The real bytes here are genuine HEIC (what a live iPhone
+// camera capture actually is), so the sniff in finishBinaryUpload is what
+// should now gate this, not the declared Content-Type.
+test('the raw-body ingestion path accepts a real HEIC photo even under a generic declared Content-Type', async () => {
+  const token = await pairedToken();
+  const res = await request(app)
+    .post('/items/photo')
+    .set('Authorization', `Bearer ${token}`)
+    .set('Content-Type', 'application/octet-stream')
+    .send(HEIC_BYTES)
+    .expect(201);
+  assert.equal(res.body.type, 'photo');
 });
 
 test('file and voice items show up in the other device\'s backlog like any other item, with the right fileUrl', async () => {

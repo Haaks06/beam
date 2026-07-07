@@ -1072,6 +1072,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
       if (item.encrypted && p2pController) {
         try {
           const encRes = await fetch(fileSrc);
+          if (!encRes.ok) throw new Error(`fetch failed: ${encRes.status}`);
           const encBuf = await encRes.arrayBuffer();
           const decBuf = await p2pController.decryptFromRelay(encBuf);
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'image/jpeg' }));
@@ -1111,6 +1112,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
       if (item.encrypted && p2pController) {
         try {
           const encRes = await fetch(fileSrc);
+          if (!encRes.ok) throw new Error(`fetch failed: ${encRes.status}`);
           const encBuf = await encRes.arrayBuffer();
           const decBuf = await p2pController.decryptFromRelay(encBuf);
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'application/octet-stream' }));
@@ -1152,6 +1154,7 @@ async function renderItem(item, { prepend, persist = true } = { prepend: true })
       if (item.encrypted && p2pController) {
         try {
           const encRes = await fetch(fileSrc);
+          if (!encRes.ok) throw new Error(`fetch failed: ${encRes.status}`);
           const encBuf = await encRes.arrayBuffer();
           const decBuf = await p2pController.decryptFromRelay(encBuf);
           fileSrc = URL.createObjectURL(new Blob([decBuf], { type: item.mimeType || 'audio/webm' }));
@@ -1338,6 +1341,15 @@ async function decryptForDelivery(item) {
     if (item.fileUrl && !item.dataBase64) {
       const { relayUrl, token } = loadConfig();
       const encRes = await fetch(`${relayUrl}${item.fileUrl}?token=${encodeURIComponent(token)}`);
+      // A failed fetch here (a transient blip, or this device's token
+      // aging out mid-request) used to fall straight through to
+      // decryptFromRelay on whatever error body came back -- AES-GCM
+      // decrypting a JSON error message as if it were ciphertext, which
+      // either throws (caught below, fine) or in principle could produce
+      // bytes that look like a decrypt success but aren't the real photo.
+      // Failing loud here instead means the caller's null-skip is always
+      // for a genuine "couldn't fetch this item," not a disguised one.
+      if (!encRes.ok) throw new Error(`failed to fetch ${item.type} for decryption: ${encRes.status}`);
       const encBuf = await encRes.arrayBuffer();
       const decBuf = await p2pController.decryptFromRelay(encBuf);
       return { ...item, dataBase64: bufToBase64(decBuf) };

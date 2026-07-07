@@ -160,8 +160,8 @@ function finishBinaryUpload(req, res, { filename, declaredMime, encrypted, itemT
 }
 
 // Wires up one binary item type's two ingestion paths:
-//   1. A raw body (Content-Type: <one of allowedExtMap's keys>, bytes as
-//      the entire body) — Apple's Shortcuts app can set a request body to
+//   1. A raw body (bytes as the entire body, whatever Content-Type the
+//      client declared) — Apple's Shortcuts app can set a request body to
 //      a file's raw contents directly, but hand-authoring a correct
 //      multipart/form-data body in that file format is the single most
 //      error-prone part of it (see ios-shortcut/). Only engaged when
@@ -170,8 +170,20 @@ function finishBinaryUpload(req, res, { filename, declaredMime, encrypted, itemT
 // Exactly the same two-path shape POST /items/photo already used —
 // generalized so /file and /voice below don't duplicate it a second and
 // third time.
+//
+// The raw-body matcher used to only fire for Content-Type values that
+// exactly matched one of allowedExtMap's keys (e.g. 'image/heic') -- any
+// other declared type (a Shortcuts-produced 'application/octet-stream',
+// or a real but not-yet-anticipated mobile MIME string) meant express.raw
+// silently skipped parsing, req.body stayed a non-Buffer, and the request
+// fell through to the multipart branch below, which then failed with a
+// generic "file is required" that gave no hint the actual cause was an
+// unrecognized Content-Type. Matching any non-multipart type here instead
+// makes the sniff in finishBinaryUpload (real bytes vs. magic number) the
+// actual gate for a plain upload, same as it already is -- this is just
+// the cheap first pass that gets the bytes into a Buffer at all.
 function registerUploadRoute(routePath, itemType, uploader, allowedExtMap, sniffFn) {
-  const rawBody = express.raw({ type: Object.keys(allowedExtMap), limit: MAX_UPLOAD_BYTES });
+  const rawBody = express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES });
 
   router.post(
     routePath,
