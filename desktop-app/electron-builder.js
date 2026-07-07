@@ -75,17 +75,16 @@ module.exports = async function () {
   //     incompatible (Store apps must update through the Store) and is
   //     disabled under process.windowsStore -- see main.js.
   const appx = {
-    // Placeholders -- MUST be replaced with the real values Partner Center
-    // assigns once the (currently unregistered) developer account exists
-    // and the app name is reserved there. Left as obvious placeholders
-    // rather than guessed-at real-looking values specifically so a
-    // submission attempt with stale defaults fails loudly instead of
-    // quietly uploading the wrong identity. See STORE.md's submission
-    // checklist for exactly which Partner Center page each value comes
-    // from.
-    identityName: 'CHANGEME.BeamDesktopApp',
-    publisher: undefined, // CHANGEME: "CN=<publisher GUID>" from Partner Center once assigned. Left unset for now -- see computePublisherName() in electron-builder's AppxTarget: with no publisher and no signing cert configured, it builds an unsigned-for-Store-only test package under "CN=ms" rather than failing, which is what makes local sideload testing possible before the account exists.
-    publisherDisplayName: 'Beam',
+    // Real values, from Partner Center's Product identity page (app
+    // "Beamlot" reserved there) -- Package/Identity/Name,
+    // Package/Identity/Publisher, and Package/Properties/PublisherDisplayName
+    // respectively. displayName stays "Beam" (the user-facing name shown in
+    // the Start menu/taskbar/window title) -- separate from identityName,
+    // which is just Partner Center's internal package identity and never
+    // shown to users.
+    identityName: 'Beamlot.Beamlot',
+    publisher: 'CN=A0E9C038-077F-4423-82A7-D51710D8E4BF',
+    publisherDisplayName: 'Beamlot',
     displayName: 'Beam',
     backgroundColor: '#630000', // matches the site's maroon signal accent
     // Adds the windows.startupTask manifest extension so "start at login"
