@@ -1,6 +1,5 @@
 import React from "react";
-import { Audio } from "@remotion/media";
-import { AbsoluteFill, Sequence, interpolate, staticFile } from "remotion";
+import { AbsoluteFill, Sequence } from "remotion";
 import { Scene1Pairing, SCENE1_DURATION } from "./scenes/Scene1Pairing";
 import { Scene2Home, SCENE2_DURATION } from "./scenes/Scene2Home";
 import { Scene3Transfer, SCENE3_DURATION } from "./scenes/Scene3Transfer";
@@ -30,10 +29,6 @@ export const BEAM_PROMO_DURATION = SCENES.reduce(
   0,
 );
 
-const FADE_IN = 30; // 1s
-const FADE_OUT = 60; // 2s
-const MAX_VOLUME = 0.4;
-
 export const BeamPromo: React.FC = () => {
   let cursor = 0;
   const offsets = SCENES.map((s) => {
@@ -54,23 +49,6 @@ export const BeamPromo: React.FC = () => {
           <Component />
         </Sequence>
       ))}
-
-      <Audio
-        src={staticFile("headphonk.mp3")}
-        volume={(f: number) =>
-          interpolate(
-            f,
-            [
-              0,
-              FADE_IN,
-              BEAM_PROMO_DURATION - FADE_OUT,
-              BEAM_PROMO_DURATION,
-            ],
-            [0, MAX_VOLUME, MAX_VOLUME, 0],
-            { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-          )
-        }
-      />
     </AbsoluteFill>
   );
 };
