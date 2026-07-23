@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beam on iPhone — Share Sheet setup</title>
+  <meta name="description" content="Put Beam in your iPhone's Share Sheet using Apple Shortcuts. Two shortcuts, about five minutes, no App Store and no account." />
+  <meta name="theme-color" content="#050308" />
+  <link rel="icon" href="/icons/icon-32.png?v=2" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png?v=2" />
+  <meta name="robots" content="index,follow" />
+
+  <link rel="stylesheet" href="/src/landing.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="ambient-mark" aria-hidden="true"></div>
+  <div class="ambient-grid" aria-hidden="true"></div>
+
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="nav-brand" href="/">
+        <img src="/beam-logo.jpg" alt="" />
+        <span>Beam</span>
+      </a>
+      <div class="nav-actions">
+        <a class="btn btn-primary btn-sm" href="/app">Open Beam</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="section">
+    <div class="container doc">
+      <p class="eyebrow">iPhone setup</p>
+      <h1>Beam in your Share Sheet</h1>
+      <p class="section-lede">
+        iOS doesn't let a website register itself as a Share Sheet target the
+        way Android does, so on iPhone Beam works through Apple Shortcuts. You
+        build it once in about five minutes, then Beam shows up next to AirDrop
+        whenever you share a link or a photo. No App Store, no account.
+      </p>
+
+      <p>
+        There are two shortcuts — one for links, one for photos. Each is a
+        straight line of steps with no branching, so there's very little to get
+        wrong. Build whichever you'll actually use; you don't need both.
+      </p>
+
+      <h2>Before you start</h2>
+      <p>
+        Open Beam on your PC and leave it showing its pairing code. That code is
+        good for 10 minutes before anyone claims it, which is plenty of time to
+        set this up and send something. The shortcut asks you for the code each
+        time you use it, claims the pairing and sends the item back-to-back in
+        one run — so you're never racing the session timer by hand.
+      </p>
+
+      <h2>“Beam Link to PC”</h2>
+      <ol>
+        <li>Shortcuts app → <strong>+</strong> → name it <code>Beam Link to PC</code>.</li>
+        <li>
+          Tap the shortcut's settings (ⓘ) → <strong>Show in Share Sheet</strong> → on.
+          Under “Share Sheet Types”, enable <strong>URLs</strong> and
+          <strong>Safari web pages</strong> (add <strong>Text</strong> too if you
+          want to share plain notes).
+        </li>
+        <li>Add action <strong>Ask for Input</strong> → Input Type: Text → Prompt: “Beam pairing code (from your PC's Beam window)”.</li>
+        <li>Add action <strong>Set Variable</strong> → name it <code>PairingCode</code>.</li>
+        <li>
+          Add action <strong>Get Contents of URL</strong>:
+          <ul>
+            <li>URL: <code>https://beamlot.com/pair/claim?pairingCode=</code> then insert the <code>PairingCode</code> variable, then type <code>&amp;label=iPhone</code></li>
+            <li>Method: <strong>POST</strong> (no headers, no request body)</li>
+          </ul>
+        </li>
+        <li>Add action <strong>Get Dictionary Value</strong> → Key: <code>token</code>.</li>
+        <li>Add action <strong>Set Variable</strong> → name it <code>Token</code>.</li>
+        <li>
+          Add action <strong>Get Contents of URL</strong>:
+          <ul>
+            <li>URL: <code>https://beamlot.com/items/link?token=</code> then insert the <code>Token</code> variable, then type <code>&amp;url=</code> then insert the <code>Shortcut Input</code> variable</li>
+            <li>Method: <strong>POST</strong></li>
+          </ul>
+        </li>
+        <li>Optionally add <strong>Show Notification</strong> → “Beamed!” at the end.</li>
+        <li>
+          Save. Then share a link from any app → Share → “Beam Link to PC” →
+          type the code your PC is showing.
+        </li>
+      </ol>
+
+      <h2>“Beam Photo to PC”</h2>
+      <p>Same shape, with a different final step.</p>
+      <ol>
+        <li>Shortcuts app → <strong>+</strong> → name it <code>Beam Photo to PC</code>.</li>
+        <li><strong>Show in Share Sheet</strong> → on, enable <strong>Images</strong> only.</li>
+        <li>Add action <strong>Ask for Input</strong> → Text → Prompt: “Beam pairing code (from your PC's Beam window)”.</li>
+        <li><strong>Set Variable</strong> → <code>PairingCode</code>.</li>
+        <li><strong>Get Contents of URL</strong> → same claim URL and method as step 5 above.</li>
+        <li><strong>Get Dictionary Value</strong> → Key: <code>token</code>.</li>
+        <li><strong>Set Variable</strong> → <code>Token</code>.</li>
+        <li>
+          <strong>Get Contents of URL</strong>:
+          <ul>
+            <li>URL: <code>https://beamlot.com/items/photo?token=</code> then insert the <code>Token</code> variable</li>
+            <li>Method: <strong>POST</strong></li>
+            <li>Request Body: <strong>File</strong>, value = <code>Shortcut Input</code></li>
+          </ul>
+        </li>
+        <li>Optionally add <strong>Show Notification</strong> → “Beamed!”.</li>
+        <li>Save and use the same way — share a photo → “Beam Photo to PC” → type the code.</li>
+      </ol>
+
+      <h2>Good to know</h2>
+      <ul>
+        <li>
+          A pairing code is single-use. If you mistype it or reuse one that's
+          already claimed, the step fails visibly rather than silently sending
+          nowhere.
+        </li>
+        <li>
+          Nothing sensitive is stored inside the shortcut — the code you type
+          each time is single-use and dead within 10 minutes even if unused. So
+          it's safe to share the shortcut itself with someone without scrubbing
+          anything first.
+        </li>
+        <li>
+          If your PC is mid-session with something else, click
+          <strong>Start over</strong> in Beam first to get a fresh code.
+        </li>
+      </ul>
+
+      <p class="btn-row">
+        <a class="btn btn-primary" href="/app">Open Beam</a>
+        <a class="btn-arrow" href="/">Back to beamlot.com</a>
+      </p>
+    </div>
+  </main>
+</body>
+</html>

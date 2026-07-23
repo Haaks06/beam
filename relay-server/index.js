@@ -126,6 +126,30 @@ app.use('/client-error', clientErrorRoutes);
 // checking "is my deploy actually live" has a real answer instead of guessing.
 app.get('/health', (req, res) => res.json({ ok: true, version: APP_VERSION }));
 
+// Installer downloads and the desktop app's update feed are both served
+// from beamlot.com so the binary host is an implementation detail rather
+// than something baked into the marketing site and every installed client.
+// RELEASE_ORIGIN points at wherever the artifacts actually sit; changing
+// hosts is then a fly secret, not a rebuild of every client that already
+// has the old URL compiled in.
+//
+// These must be registered before the static/catch-all block below, which
+// would otherwise answer /download with the SPA's index.html.
+const RELEASE_ORIGIN =
+  process.env.RELEASE_ORIGIN || 'https://github.com/Haaks06/beam/releases/latest/download';
+
+app.get('/download/windows', (req, res) => {
+  res.redirect(302, `${RELEASE_ORIGIN}/Beam-Setup-Windows.exe`);
+});
+
+// electron-updater's generic provider fetches latest.yml here, then the
+// .exe/.blockmap named inside it, so every artifact it asks for has to
+// resolve under this same prefix.
+app.get('/updates/:asset', (req, res, next) => {
+  if (!/^[A-Za-z0-9._-]+$/.test(req.params.asset)) return next();
+  res.redirect(302, `${RELEASE_ORIGIN}/${req.params.asset}`);
+});
+
 // Serve the built PWA from the same origin/process when available, so a
 // single relay URL (and a single tunnel/cert in production) covers both
 // the API and the pairing/share page the QR code points at.
@@ -141,6 +165,10 @@ const webClientDist = path.join(__dirname, '..', 'web-client', 'dist');
 if (fs.existsSync(webClientDist)) {
   app.use(express.static(webClientDist, { index: false }));
   app.get('/', (req, res) => res.sendFile(path.join(webClientDist, 'landing.html')));
+  // The iPhone Shortcuts setup guide. Needs naming explicitly for the same
+  // reason as '/' — the catch-all below would otherwise answer it with the
+  // pairing app.
+  app.get('/ios', (req, res) => res.sendFile(path.join(webClientDist, 'ios.html')));
   // Everything else non-API — /app itself, and pairing-code links like
   // /ABC123 (see relay-server/routes/pair.js's pairingUrl) — is the actual
   // app. web-client's own client-side routing (see parsePairingLink() in

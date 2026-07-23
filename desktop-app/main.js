@@ -317,6 +317,11 @@ function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      // Electron leaves DevTools reachable in packaged builds (Ctrl+Shift+I),
+      // which in this app opens an inspector onto the live relay session --
+      // tokens, item payloads and all. Off once packaged, still available
+      // when running from source.
+      devTools: !app.isPackaged,
       preload: path.join(__dirname, 'preload.js'),
       // Chrome/Chromium escalates timer throttling the longer a page stays
       // hidden -- by several minutes in, a background page's setInterval/

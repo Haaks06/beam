@@ -116,21 +116,44 @@ module.exports = async function () {
     appId: 'com.beam.desktop',
     productName: 'Beam',
     npmRebuild: false,
+    // asar is electron-builder's default, but it's stated explicitly here
+    // because the exclusions below are only meaningful in combination with
+    // it -- and because `npx asar extract` makes the archive itself only a
+    // speed bump, not a lock. It keeps the app's internals out of casual
+    // reach in Explorer; it is not a secrecy boundary.
+    asar: true,
+    // Documentation, tests and source maps get bundled into app.asar by
+    // default and ship to every user with no runtime purpose, while
+    // describing internals (and, in the docs' case, hosting and threat-model
+    // detail) far more legibly than the minified code beside them.
+    files: [
+      '**/*',
+      '!**/*.md',
+      '!**/*.map',
+      '!**/test/**',
+      '!**/tests/**',
+      '!**/__tests__/**',
+      '!**/*.test.js',
+      '!**/.env*',
+    ],
     win,
     nsis,
     appx,
-    // electron-updater's feed -- GitHub Releases works as-is only while
-    // this repo stays public (its provider assumes anonymous, unauthenticated
-    // access to the releases API; a shipped app can't safely embed a token
-    // to read a private repo's releases, since anyone could extract it from
-    // the binary). If the repo ever goes private, switch this to the
-    // generic HTTP provider pointed at a self-hosted update feed instead of
-    // just adding a token here. Only relevant to the nsis target -- the
-    // appx target never uses this (Store apps update through the Store).
+    // electron-updater's feed. The github provider assumes anonymous,
+    // unauthenticated access to the releases API, so it only works while the
+    // source repo is public -- and a shipped app can't safely embed a token
+    // to read a private one, since anyone could extract it from the binary.
+    // The generic provider sidesteps that entirely: it just fetches
+    // latest.yml over plain HTTP from beamlot.com, which proxies to wherever
+    // the artifacts actually live (see RELEASE_ORIGIN in relay-server).
+    // Clients only ever learn the beamlot.com URL, so the binary host can
+    // move later without stranding installs that already shipped.
+    //
+    // Only relevant to the nsis target -- the appx target never uses this
+    // (Store apps update through the Store).
     publish: {
-      provider: 'github',
-      owner: 'Haaks06',
-      repo: 'beam',
+      provider: 'generic',
+      url: 'https://www.beamlot.com/updates',
     },
   };
 };
